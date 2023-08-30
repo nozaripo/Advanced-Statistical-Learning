@@ -1,0 +1,179 @@
+---
+title: "Lab Week 11 - Clustering"
+author: "Pouria"
+date: "4/11/2022"
+output: slidy_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T)
+```
+
+```{r, message=F, warning=F}
+library(ggplot2)
+library(mvtnorm)
+library(Matrix)
+```
+
+
+## a) Generate the simulated data
+
+- Generate a simulated data set with 20 observations in each of three classes (i.e. 60 observations total), and 50 variables.
+
+```{r}
+# set.seed(123)
+# x <- matrix(rnorm(20 * 3 * 50, mean = 0, sd = 1), ncol = 50)
+# x[1:20, 2] <- 1
+# x[21:40, 1] <- 2
+# x[21:40, 2] <- 2
+# x[41:60, 1] <- 1
+# true.labels <- factor(c(rep(1, 20), rep(2, 20), rep(3, 20)))
+```
+
+
+```{r}
+
+
+set.seed(123)
+
+n.obs = 600
+n.var = 50
+
+data = matrix(, nrow = 0, ncol = 50)
+
+mu = c(0,0,0)
+sig= c(1, 1, 1)
+
+for (i in 1:3){
+  
+  center = rnorm(50, 0, 2)
+  # sigma = matrix(rnorm(n.var*n.var, 0, 10), ncol = n.var)
+  # sigma = matrix(runif(n.var*n.var, 0, 70), ncol = n.var)
+  # 
+  # ind <- lower.tri(sigma) 
+  # sigma[ind] <- t(sigma)[ind]
+  
+  sigma <- matrix(runif(n.var^2)*2-1, ncol=n.var) 
+  sigma <- t(sigma) %*% sigma
+  
+  # sigma = diag(n.var)
+  
+  # data[n.obs/3*(i-1)+1:n.obs/3,] = rmvnorm(n.obs/3, mean = center, sigma = sigma)
+  
+  data = rbind(data, rmvnorm(n.obs/3, mean = center, sigma = sigma))
+}
+x = data
+true.labels <- factor(c(rep(1, n.obs/3), rep(2, n.obs/3), rep(3, n.obs/3)))
+
+pr.out <- prcomp(x)
+
+summary(pr.out)$importance[3,]
+```
+
+
+```{r}
+# pr.out <- prcomp(x)
+# 
+# summary(pr.out)$importance[1,1:10]
+# 
+# df.pca <- data.frame(pr.out$x[, 1:2], true.labels)
+# 
+# ggplot(df.pca) +
+#   geom_point(aes(PC1, PC2, col = true.labels))
+```
+
+
+
+## Check the mean and variance of the variables
+
+```{r}
+cumsum(apply(x, 2, mean))
+cumsum(apply(x, 2, var))
+
+```
+
+
+## b) PCA and plot the first two PC scores
+
+**Note 1**: This part is used for visualization for now and to hint the user on if they need to revisit part (a) and fix the distribution.
+
+**Note 2**: The results are going to be directly used in part (f).
+
+- Perform PCA on the `60` observations and plot the **first two principal component** score vectors. Use a different color to indicate the observations in each of the three classes. If the three classes appear separated in this plot, then continue on to part (c). If not, the return to part (a) and modify the simulation so that there is greater separation between the three classes. Do not continue to part (c) until the three classes show at least some separation in the first two principal component score vectors.
+
+
+```{r}
+pr.out <- prcomp(x)
+
+summary(pr.out)$importance[3,]
+```
+
+
+## Plot
+
+
+
+```{r}
+
+df.pca <- data.frame(pr.out$x[, 1:2], true.labels)
+
+ggplot(df.pca) +
+  geom_point(aes(PC1, PC2, col = true.labels))
+
+```
+
+
+
+## c) K-means Clustering with `K=3`
+
+- Perform K-means clustering of the observations with `K=3`. How well do the clusters that you obtained in K-means clustering compare to the true class labels ?
+
+```{r}
+km.out <- kmeans(x, 3, nstart = 20)
+table(true.labels, km.out$cluster)
+```
+
+
+## d) K-means Clustering with `K=2`
+
+- Perform K-means clustering with `K=2`. Describe your results.
+
+```{r}
+km.out <- kmeans(x, 2, nstart = 20)
+table(true.labels, km.out$cluster)
+```
+
+
+
+## e) K-means Clustering with `K=4`
+
+- Now perform K-means clustering with `K=4`, and describe your results.
+
+```{r}
+km.out <- kmeans(x, 4, nstart = 20)
+table(true.labels, km.out$cluster)
+```
+
+
+## f) K-means Clustering with `K=3` on the first two PCs
+
+- Now perform K-means clustering with `K=3` on the first two principal component score vectors, rather than on the raw data.
+
+```{r}
+# km.out <- kmeans(pr.out$x[, 1:2], centers = sort(kmeans(pr.out$x[, 1:2], centers = 3, nstart=20)$centers), nstart = 20)
+km.out <- kmeans(pr.out$x[, 1:2], 3, nstart=20)
+table(true.labels, km.out$cluster)
+```
+
+
+
+## g) K-means Clustering with `K=3` after scaling
+
+- Using the `scale()` function, perform K-means clustering with `K=3` on the data after scaling each variable to have standard deviation one. How do these results compare to those obtained in (b) ? Explain.
+
+```{r}
+km.out <- kmeans(scale(x), 3, nstart = 20)
+table(true.labels, km.out$cluster)
+```
+
+

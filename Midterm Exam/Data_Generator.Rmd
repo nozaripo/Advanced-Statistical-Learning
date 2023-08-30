@@ -1,0 +1,597 @@
+---
+title: "Data_Generation - Midterm Exam"
+author: "Pouria"
+date: "3/3/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r libraries, warning=F, message=F}
+library(magrittr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(boot)
+library(nlme)
+```
+
+
+# Create the data points and visualize
+
+```{r Data, warning=F,message=F}
+
+set.seed(123)
+
+n.groups = 10
+
+Year1 <- Year2 <- Earning1 <- Earning2 <- matrix(rep(0,250),ncol = n.groups/2)
+for (i in 1:(n.groups/2)){
+  
+  s1 <- sample(c(20,50,60,70),1)
+  s2 <- sample(c(35,65,60,80),1)
+  
+  noise1 = rnorm(48, 0, s1)
+  noise2 = rnorm(48, 0, s2)
+  
+  noise1 = c(noise1, rnorm(2, 400, 300))
+  noise2 = c(noise2, rnorm(2, 400, 200))
+  
+  Year1[,i] <- runif(50, 0, 10)
+  Year2[,i] <- runif(50, 0, 10)
+  
+  coef1.rand <- c(rnorm(1,0,40), rnorm(1,4,6), rnorm(1,0,2)) 
+  coef2.rand <- c(rnorm(1,0,50), rnorm(1,3,10), rnorm(1,0,.5)) 
+  
+  
+  Earning1[,i] <- 90+coef1.rand[1] + Year1[,i]*(25+coef1.rand[2]) + Year1[,i]^2*(10+coef1.rand[3]) + noise1
+  
+  
+  Earning2[,i] <- 300+coef2.rand[1] + Year2[,i]*(60+coef2.rand[2]) + Year2[,i]^2*(3+coef2.rand[3]) + noise2
+}
+
+
+# names1 <- factor(c("P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10"))
+# names2 <- factor(c("N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8", "N9", "N10"))
+
+names1 <- factor(c("P1", "P2", "P3", "P4", "P5"))
+names2 <- factor(c("N1", "N2", "N3", "N4", "N5"))
+
+
+
+
+
+df.Year1 <- data.frame(Year1)
+df.Year1.long <- df.Year1 %>%
+  set_colnames(names1)%>%
+  pivot_longer(1:5, names_to = "Group", values_to = "Year")
+  
+# names(df.Year1.long)
+
+df.Earning1 <- data.frame(Earning1)
+df.Earning1.long <- df.Earning1 %>%
+  set_colnames(names1)%>%
+  pivot_longer(1:5, names_to = "Group", values_to = "Earning") 
+
+df.Earning1.long$Group <- NULL
+
+df1.long <- data.frame(df.Year1.long, df.Earning1.long)
+
+
+
+df.Year2 <- data.frame(Year2)
+df.Year2.long <- df.Year2 %>%
+  set_colnames(names2)%>%
+  pivot_longer(1:5, names_to = "Group", values_to = "Year") 
+  
+# names(df.Year2.long)
+
+df.Earning2 <- data.frame(Earning2)
+df.Earning2.long <- df.Earning2 %>%
+  set_colnames(names2)%>%
+  pivot_longer(1:5, names_to = "Group", values_to = "Earning") 
+
+df.Earning2.long$Group <- NULL
+
+df2.long <- data.frame(df.Year2.long, df.Earning2.long)
+
+
+Degree <- rbind(matrix(c(rep("PhD", dim(df1.long)[1])), nrow = dim(df1.long)[1]) ,
+                matrix(c(rep("Not-PhD", dim(df2.long)[1])), nrow = dim(df2.long)[1]))
+
+
+Earnings.df <- data.frame(rbind(df1.long, df2.long) , Degree) %>%
+  mutate(Group = factor(Group), Degree = factor(Degree))
+
+
+
+
+attach(Earnings.df)
+
+
+ggplot(Earnings.df) +
+  geom_point(aes(x = Year, y = Earning, col = Degree)) +
+  ylab("LifeTime Earning") +
+  xlab("Year") +
+  theme_bw()
+
+```
+
+# Test the fits for the data
+```{r}
+lm.fit1 <- lm(Earning ~ Year*Degree, Earnings.df)
+summary(lm.fit1)
+
+
+
+lm.fit2 <- lm(Earning ~ Year*Degree + I(Year^2)*Degree, Earnings.df)
+summary(lm.fit2)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+# Exam Questions
+
+
+Description of the dataset: 
+
+
+
+
+
+1. Implement a simple linear regression analysis (call the model `fit1`) to predict the lifetime earning (`Earning`) as the response variable with `Year`, `Degree` and their interactions as the predictors.
+
+1A. **Summarize** the model and report your findings on what predictors have **significant effects** on variations in `Earning`. If there are more than one model, report all their **intercepts and slopes**.
+
+1B. **Plot the fits**. Ensure to include the **data points** split into "PhD" and "notPhD" degrees. Read these results and report your **inference** in general terms based on the variable names.
+
+1C. Plot the **diagnostics**. Check all the linear model **assumptions** and make comments.
+
+
+1D. Use both SE equation (provided below) and bootstrapping (200 times) methods to calculate the standard error on the coefficient corresponding to the variable `Year` and compare them; 
+
+$$SE(\hat \beta_{Year})=\frac{\sigma^2}{\sum_{i=1}^n(x_i-\bar{x})^2}$$
+*Hint*: You would use bootstrapping to estimate the coefficient $\hat \beta_{Year}$ each time so would get a sample of your coefficient estimates. Calculate the SE of this sample.
+
+
+
+- Show the influential data points on the plot of studentized residuals vs leverage.
+*Note: use 4/*:
+
+
+
+
+
+2. Now fit a new linear model (call it `fit2`) by adding a square term on `Year` and its interaction with `Degree` to the relationship of your model `fit1` to predict `Earning` again.
+
+2A. **Summarize** the model and report your findings on **significant effects**. If there are more than one model, report all their **intercepts and slopes**.
+
+2B. **Plot the fits**. Ensure to include the **data points** split into "PhD" and "notPhD" degrees. Read these results and report your **inference** in general terms based on the variable names.
+
+2C. Use `ANOVA` to compare the model with nonlinear term and the simple model in Problem 1. Comment on significance of the difference.
+
+2D. Now, of these the two models determine which one is better using a 10-fold cross-validation.
+
+
+
+
+
+
+3. In this problem, we aim to fit a linear mixed effect model to the data to predict `Earning` by other continuous and categorical variables in the dataset.
+
+```{r}
+Groups.names <- factor(c("N1", "N2", "N3", "N4", "N5", "P1", "P2", "P3", "P4", "P5"))
+```
+
+
+3A. First, plot the residuals of `fit1` (no square term) in box plot against the groups ("P1",...,"P10", "N1",..."N10") with "PhD" and "notPhD" denoted in different colors again. Is `fit1` sufficient to explain the variations in `Earnings`? Explain why or why not? Is there need for implementing a mixed-effect model?
+
+3B. **Fit linear mixed effect model** with a baseline similar to `fit1` (`Year`, `Degree` and interactions) and a random effect of `Group`. 
+
+- Perform this with a diagonal covariance matrix structure and save it to `lm.fit.mixed`. Also, make sure to check if the variables in `lm.fit.mixed` are significant.
+
+3C. **Fixed, random, and mixed effects**; Tease out the fixed-effect coefficients and the random-effect coefficients (for different groups); Only keep the significant ones. 
+
+3D. Plot the fixed effect fits and mixed effect fits for all groups.
+
+
+
+**I'm not asking them to center the data for the exam. Should we? It might get complicated and they may forget it from time to time; data with no centering will always yield the same results and residuals; It only affects the coefficients estimates which we ask them to practice it in bonus**
+
+**Note:** Center the `Year` variable about its mean value for use in fits; either via defining a new variable and consistently using that throughout or using `I()` in the fits. 
+
+
+
+
+4. **Bonus:** 
+Take a linear regression of the entire data for one linear fit in predicting `Earning` by `Year` (no `Degree` and no `Group` effects). 
+
+- Take the intercept and slope coefficients obtained from this fit and then systematically evaluate the residual sum of squares (RSS, Eq. 3.3) around this optimal set of coefficients(`-/+ 20%` with `100` of step size in your for-loop) to systematically create contour plot similar to Fig. 3.2 in the book. 
+
+- Repeat above this time for `Year` centered about its mean value (You should do a new fit and find its intercept and slopes with `lm()`)
+
+- Compare the shapes of contour plots in these two centered and un-centered cases. What is the phenomenon you observe? Comment on your results.
+
+
+
+
+
+
+
+
+
+
+# Problem 1
+
+1. Implement a simple linear regression analysis (call the model `fit1`) to predict the lifetime earning (`Earning`) as the response variable with `Year`, `Degree` and their interactions as the predictors.
+
+## 1A. Regression for `Earning` as a function of `Year`, `Degree` and their interactions.
+
+**Provide a summary of your model and make comments on the significant effects and the meaning of each of them, i.e., what values do the slopes and the intercepts take on?**
+
+```{r}
+lm.fit1 <- lm(Earning ~ Year*Degree, Earnings.df)
+summary(lm.fit1)
+```
+
+
+
+
+
+## 1B. Plot the fits
+
+- **Make sure to also include the data points split into "PhD" and "notPhD" degrees.**
+
+- **Make comments on how you read the data and the fit; What is your interpretation of these results?!**
+
+```{r}
+coeffs <- coef(lm.fit1)
+coeffs
+ggplot(Earnings.df, aes(x=Year, y=Earning, col=Degree)) +
+  geom_point(alpha=.7) +
+  geom_abline(slope = coeffs[2], intercept = coeffs[1], col = "black", size = 1.5) +
+  geom_abline(slope = coeffs[2]+coeffs[4], intercept = coeffs[1]+coeffs[3], col = "red" , size = 1.5) +
+  scale_color_manual(values = c("black", "red")) +
+  theme_bw()
+
+ggplot(Earnings.df, aes(x=Year, y=Earning, col=Degree)) +
+  geom_point(alpha=.7) +
+  geom_smooth(method = "lm", formula = y~x, size = 1.5) +
+  scale_color_manual(values = c("black", "red")) +
+  theme_bw()
+```
+
+**Comments:** 
+
+
+
+
+
+
+## 1C. Diagnostics Plot
+
+```{r}
+par(mfrow=c(2,2))
+plot(lm.fit1)
+```
+
+
+
+## 1D. Calculate SE using two methods
+
+1. Equation 
+$$SE(\hat \beta_{Year})=\frac{\sigma^2}{\sum_{i=1}^n(x_i-\bar{x})^2}$$
+
+```{r}
+
+Earnings.df_notPhD <- Earnings.df %>%
+  filter(Degree == "Not-PhD")
+
+SE.eq <- sd(Earnings.df_notPhD$Earning)/
+  sqrt(sum( (Earnings.df_notPhD$Year - mean(Earnings.df_notPhD$Year) )^2 ))
+
+SE.eq
+```
+
+
+2. Bootstrapping 200 times
+
+```{r}
+boot.fn <- function (data , index){
+  coef (lm(Earning ~ Year*Degree , data = data , subset = index))[2]
+}
+
+beta1.boot <- boot(Earnings.df , boot.fn, 200)
+
+sd(beta1.boot$t)
+
+```
+
+
+
+
+
+# Problem 2
+
+Now fit a new linear model (call it `fit2`) by adding a square term on `Year` and its interaction with `Degree` to the relationship of your model `fit1` to predict `Earning` again.
+
+
+## 2A. **Fit and Summarize** the model and report your findings on **significant effects**. If there are more than one model, report all their **intercepts and slopes**.
+
+
+```{r}
+lm.fit2 <- lm(Earning ~ Year*Degree + I(Year^2)*Degree, Earnings.df)
+summary(lm.fit2)
+```
+
+
+2B. **Plot the fits**. Ensure to include the **data points** split into "PhD" and "notPhD" degrees. Read these results and report your **inference** in general terms based on the variable names.
+
+
+```{r}
+
+# First: Use the coefficients and stat_function
+coeff.fit2 <- coef(lm.fit2)
+
+f1 <- function(x) coeff.fit2[1] + coeff.fit2[2]*x + coeff.fit2[4]*x^2
+f2 <- function(x) coeff.fit2[1]+coeff.fit2[3] + (coeff.fit2[2]+coeff.fit2[5])*x + (coeff.fit2[4]+coeff.fit2[6])*x^2
+
+ggplot(Earnings.df, aes(x=Year, y=Earning, col=Degree)) + 
+  geom_point(alpha=.5) +
+  stat_function(fun=f1, colour="black", size=1.5) +
+  stat_function(fun=f2, colour="red", size=1.5) +
+  scale_color_manual(values = c("black", "red")) +
+  theme_bw()
+
+
+
+# or: use geom_smooth with x+I(x^2)
+# geom_smooth considers interactions by default
+ggplot(Earnings.df, aes(x=Year, y=Earning, col=Degree)) + 
+  geom_point(alpha=.5) +
+  geom_smooth(method="lm", formula = y~x+I(x^2), size=1.5) +
+  scale_color_manual(values = c("black", "red")) +
+  theme_bw()
+```
+
+## Compare the two fits using ANOVA
+
+2C. Use `ANOVA` to compare the model with nonlinear term and the simple model in Problem 1. Comment on significance of the difference.
+
+```{r}
+# lm.fit3 <- lm(Earning ~ Year * Degree + I(Year^2):Degree)
+
+anova(lm.fit2, lm.fit1)
+```
+
+
+
+## Model selection using cross-validation
+
+2D. Now, of these the two models determine which one is better using a 10-fold cross-validation.
+
+
+```{r}
+
+glm.fit1 <- glm (Earning ~ Year*Degree, data = Earnings.df)
+glm.fit2 <- glm (Earning ~ Year*Degree + I(Year^2)*Degree, data = Earnings.df)
+  
+cv.error.fit1 <- cv.glm (Earnings.df , glm.fit1 , K = 10)$delta[1]
+cv.error.fit2 <- cv.glm (Earnings.df , glm.fit2 , K = 10)$delta[1]
+
+data.frame( cv.error.fit1, cv.error.fit2 )
+
+```
+
+
+
+
+
+
+
+# Problem 3
+
+## 3A. Plot the residuals of `fit1` in a box-plot against `Group`.
+
+3A. First, plot the residuals of `fit1` (no square term) in box plot against the groups ("P1",...,"P10", "N1",..."N10") with "PhD" and "notPhD" denoted in different colors again. Is `fit1` sufficient to explain the variations in `Earnings`? Explain why or why not? Is there need for implementing a mixed-effect model?
+
+```{r}
+attach(Earnings.df)
+
+ggplot(lm.fit1) +
+  geom_boxplot(aes(x = Group, y = .resid, col = Degree)) +
+  scale_color_manual(values=c("black", "red")) +
+  xlab("Subject") + ylab("Residuals") +
+  theme_bw()
+```
+
+## 3B. Fit linear mixed effect model 
+
+Fit a linear mixed effect model with a baseline similar to `fit1` (`Year`, `Degree` and interactions) and a random effect of `Group`. 
+
+```{r}
+lm.fit.mixed <- lme(Earning ~ Year*Degree, data = Earnings.df, random=list( Group = pdDiag( ~Year) ) )
+
+summary(lm.fit.mixed)
+```
+
+
+## 3C. Fixed, random, and mixed effects
+
+1. Tease out the fixed-effect coefficients and the random-effect coefficients (for different groups); Only keep the significant ones. 
+
+```{r}
+fixed.effects(lm.fit.mixed)
+random.effects(lm.fit.mixed)
+```
+
+
+
+2. Also, extract the mixed-effect coefficients for each group.
+
+
+```{r}
+coeff.mixed <- coef(lm.fit.mixed)
+coeff.mixed
+```
+
+
+
+## 3D. Plot the fixed effect fits and mixed effect fits for all groups.
+
+First obtain a 2-column structure for coefficients of fixed and mixed models for plotting in `geom_abline()`.
+
+```{r}
+coeffs.ranef <- random.effects(lm.fit.mixed)
+coeffs.fixed <- fixed.effects(lm.fit.mixed)
+
+coeffs.model.mixed <- matrix(rep(0,20), nrow = 10)
+coeffs.model.fixed <- matrix(rep(0,20), nrow = 10)
+
+
+coeffs.model.fixed[1:5,1] <- coeffs.fixed[1]
+coeffs.model.fixed[1:5,2] <- coeffs.fixed[2]
+coeffs.model.fixed[6:10,1]<- coeffs.fixed[1]+ coeffs.fixed[3]
+coeffs.model.fixed[6:10,2]<- coeffs.fixed[2]+ coeffs.fixed[4]
+
+coeffs.model.mixed[1:5,1] <- coeffs.ranef[1:5,1] + coeffs.fixed[1]
+coeffs.model.mixed[1:5,2] <- coeffs.ranef[1:5,2] + coeffs.fixed[2]
+coeffs.model.mixed[6:10,1]<- coeffs.ranef[6:10,1] + coeffs.fixed[1]+ coeffs.fixed[3]
+coeffs.model.mixed[6:10,2]<- coeffs.ranef[6:10,2] + coeffs.fixed[2]+ coeffs.fixed[4]
+
+
+ids <- Earnings.df %>% pull(Group) %>% levels() %>% factor()
+
+# make a tibble with the data extracted above
+coeffs.model.fixed <- tibble(Group = ids,
+                  intercept = coeffs.model.fixed[,1],
+                  slope = coeffs.model.fixed[,2])
+
+coeffs.model.mixed <- tibble(Group = ids,
+                  intercept = coeffs.model.mixed[,1],
+                  slope = coeffs.model.mixed[,2])
+```
+
+
+
+```{r}
+
+ggplot(Earnings.df, aes(x = Year, y = Earning)) +
+  geom_abline(data = coeffs.model.fixed, aes(intercept = intercept, 
+                  slope = slope, col="Fixed Effect"), size = 1.3, legend) +
+  geom_abline(data = coeffs.model.mixed, aes(intercept = intercept, 
+                  slope = slope, col="Mixed Effect"), size = 1.3) +
+  geom_point() +
+  facet_wrap(~Group) +
+  labs(x = "Year", y = "Cumulative Earnings x 1,000 ($)", color = "Model") +
+  scale_color_manual(values = c("blue", "red")) +
+  theme_bw()
+
+```
+
+
+
+
+4. **Bonus:** 
+Take a linear regression of the entire data for one linear fit in predicting `Earning` by `Year` (no `Degree` and no `Group` effects). Take the intercept and slope coefficients obtained from this fit and then systematically evaluate the residual sum of squares (RSS, Eq. 3.3) around this optimal set of coefficients(-/+10000% with 200 of step size in your for-loop) to systematically create contour plot similar to Fig. 3.2 in the book. 
+
+- Repeat this for un-centered data. (You should do the fit for un-centered data)
+
+- Compare the shapes of contour plots in these two centered and un-centered cases. What is the phenomenon you observe? Comment on your results.
+
+
+
+
+
+No Centering
+
+```{r}
+
+Coefficients.noCentering <- coef(lm(Earning~Year))
+
+beta0.lower <- Coefficients.noCentering[[1]] - 100*Coefficients.noCentering[[1]]
+beta0.upper <- Coefficients.noCentering[[1]] + 100*Coefficients.noCentering[[1]]
+beta1.lower <- Coefficients.noCentering[[2]] - 100*Coefficients.noCentering[[2]]
+beta1.upper <- Coefficients.noCentering[[2]] + 100*Coefficients.noCentering[[2]]
+
+
+beta0 <- beta1 <- 0
+RSS <- 0
+i<-0
+
+for (b0 in seq(beta0.lower, beta0.upper, length.out=100)){
+  for(b1 in seq(beta1.lower, beta1.upper, length.out=100)){
+    i <- i+1
+    beta0[i] <- b0
+    beta1[i] <- b1
+    
+    Earning.hat <- b0 + b1*Year
+    RSS[i] <- sum((Earning - Earning.hat)^2)
+  }
+}
+
+RSS.df.noCentering <- tibble(beta0, beta1, RSS)
+
+ggplot(RSS.df.noCentering, aes(x=beta0, y=beta1, z=RSS)) +
+  geom_contour(bins=100) +
+  geom_point(aes(x=Coefficients.noCentering[[1]], y=Coefficients.noCentering[[2]])) +
+  theme_bw()
+
+
+
+
+```
+
+
+
+With Centering
+
+```{r}
+
+Coefficients.Centering <- coef(lm(Earning~I(Year-mean(Year))))
+
+beta0.lower <- Coefficients.Centering[[1]] - 100*Coefficients.Centering[[1]]
+beta0.upper <- Coefficients.Centering[[1]] + 100*Coefficients.Centering[[1]]
+beta1.lower <- Coefficients.Centering[[2]] - 100*Coefficients.Centering[[2]]
+beta1.upper <- Coefficients.Centering[[2]] + 100*Coefficients.Centering[[2]]
+
+
+beta0 <- beta1 <- 0
+RSS <- 0
+i<-0
+
+for (b0 in seq(beta0.lower, beta0.upper, length.out=100)){
+  for(b1 in seq(beta1.lower, beta1.upper, length.out=100)){
+    i <- i+1
+    beta0[i] <- b0
+    beta1[i] <- b1
+    
+    Earning.hat <- b0 + b1*Year
+    RSS[i] <- sum((Earning - Earning.hat)^2)
+  }
+}
+
+RSS.df.Centering <- tibble(beta0, beta1, RSS)
+
+ggplot(RSS.df.Centering, aes(x=beta0, y=beta1, z=RSS)) +
+  geom_contour(bins=100) + 
+  geom_point(aes(x=Coefficients.Centering[[1]], y=Coefficients.Centering[[2]])) +
+  theme_bw()
+
+
+
+
+```
+

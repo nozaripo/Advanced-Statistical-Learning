@@ -1,0 +1,62 @@
+---
+title: "Presentation1"
+author: "Pouria"
+date: "1/26/2022"
+output: ioslides_presentation
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## Shiny Presentation
+
+In this lab, we will study regression with 2 predictors, one continuous, and one qualitative, using the
+Credit data from the package ISLR
+
+1. Build a linear model of balance as a function of student status. Compare with a t-test. What do you conclude?
+
+2. Now build a model with balance as a function of income. What do you conclude?
+
+3. Next we will build a model with both regressors, student status and income.
+
+a. Plot the data, using different markers for student status
+
+b. Develop a model corresponding to Figure 3.7 left. Plot the model with the data, as in a). What do you conclude?
+
+c. Now develop and plot the full model corresponding to Figure 3.7. Cpmpare the result with those of an ANCOVA analysis. What do you conclude?
+
+## Interactive Plot
+
+```{r eruptions}
+inputPanel(
+  selectInput("n_breaks", label = "Number of bins:",
+              choices = c(10, 20, 35, 50), selected = 20),
+  
+  sliderInput("bw_adjust", label = "Bandwidth adjustment:",
+              min = 0.2, max = 2, value = 1, step = 0.2)
+)
+
+renderPlot({
+  hist(faithful$eruptions, probability = TRUE, breaks = as.numeric(input$n_breaks),
+       xlab = "Duration (minutes)", main = "Geyser eruption duration")
+  
+  dens <- density(faithful$eruptions, adjust = input$bw_adjust)
+  lines(dens, col = "blue")
+})
+```
+
+## Bullets
+
+- Bullet 1
+- Bullet 2
+- Bullet 3
+
+## R Output
+
+```{r cars}
+summary(cars)
+```
+
+

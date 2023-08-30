@@ -1,0 +1,368 @@
+---
+title: "Lab Week 03 - Linear Regression - Part 1"
+author: "Pouria"
+date: "1/24/2022"
+output:
+  slidy_presentation: default
+  beamer_presentation: default
+  ioslides_presentation: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE)
+```
+
+```{r libraries, include=FALSE}
+library(ggplot2)
+library(magrittr)
+library(tidyr)
+```
+
+
+## Lab 1
+
+In this first exercise, we will simulate different datasets with
+
+$$y = 2 + 3 *X + \epsilon,$$
+
+with $X$ randomly generated via a uniform distribution from 0 to 10, and $\epsilon$ generated via a normal (Gaussian) distribution of 0 mean and variance 1 (which we note, $\epsilon \sim N(\mu, \sigma^2)$, where $\mu=0$ and $\sigma=1$)
+
+
+## Lab 1(a)
+
+Generate 10 “experiments” with 5 observations each. Compute the slopes and the intercepts using the formula of equation 3.4, check that the values are the same as given by the `lm()` function in R , and plot the 10 different lines. Also plot in bold the “true” line.
+
+## Coefficient Estimation Function
+### Better define your computational algorithms as functions
+
+Let's define the equations of the least squares approach to obtain values of $\hat{\beta_0}$ and $\hat{\beta_1}$ that minimize the **residual sum of squares** (RSS).
+
+```{r Function for Equation 3.4}
+Eq3.4 <- function(X, y){
+  
+  # Equations 3.4 to estimate beta0 and beta1
+  beta1 = sum((X-mean(X))*(y-mean(y))) / sum((X-mean(X))^2)
+  beta0 = mean(y) - beta1*mean(X)
+  
+  return(list(beta0, beta1))
+}
+```
+
+## The Loop of Experiments Function
+### Define the experiments in a loop as a function
+
+```{r Function for finding the fits for different number of observations and experiments}
+
+Experiment <- function(N.Obs, N.Exp, X.min, X.max, epsilon.mu, epsilon.sd){
+  
+  beta0 <- beta1 <- 0
+  beta0_lm <- beta1_lm <- 0
+  SE_beta1 <- 0
+  
+  for (i in 1:N.Exp){
+    X = runif(N.Obs, min = X.min, max = X.max)
+    epsilon = rnorm(N.Obs, mean = epsilon.mu, sd = epsilon.sd)
+    y = 2 + 3*X + epsilon
+    
+    n.exp = i*rep(N.Obs, 1)
+    
+    data.points <- rbind(data.points, data.frame(n.exp, X, y))
+    
+    coeff <- Eq3.4(X, y)
+    beta0[i] <- coeff[[1]]
+    beta1[i] <- coeff[[2]]
+    
+    SE_beta1[i] <- sqrt(epsilon.sd^2 / sum((X-mean(X))^2) )
+    
+    fit.lm <- lm(y~X)
+    beta0_lm[i] <- fit.lm$coefficients[1]
+    beta1_lm[i] <- fit.lm$coefficients[2]
+  }
+  
+  coeffs <- data.frame(beta0, beta1, beta0_lm, beta1_lm)
+  
+  return(list(coeffs, SE_beta1, data.points))
+}
+```
+
+## Visualization function
+### Plot the 10 different lines and the "true" line
+
+```{r Function for Visualizations}
+Visualize <- function(Coeff.df, X, y){
+  data.points = data.frame(X, y)
+  ggplot() +
+    geom_abline(data = Coeff.df, aes(slope=beta1 , intercept=beta0), col=4) +
+    geom_abline(aes(slope = 3, intercept = 2), size=1.5, col=2) +
+    scale_x_continuous(name="X", limits=c(-2,2)) +
+    scale_y_continuous(name="y", limits=c(-10,10)) +
+    geom_point(data.points, aes(X,y, col = n.exp))
+    
+}
+```
+
+
+
+
+
+
+
+
+## Solution 1(a)
+### Always define your parameters first.
+
+Let's assign values to the parameters in the problem:
+
+```{r Parameters}
+N.Exp = 10
+N.Obs = 5
+X.min = 0
+X.max = 10
+epsilon.mu = 0
+epsilon.sd = 1
+```
+
+## Solution 1(a)
+### Coefficients for 5 observations from 10 experiments
+
+```{r}
+Results <- Experiment(N.Obs, N.Exp, X.min, X.max, epsilon.mu, epsilon.sd)
+
+Coeff.df = Results[[1]]
+
+Coeff.df
+```
+
+## Solution 1(a)
+### Visualize for 5 observations from 10 experiments
+
+```{r}
+data.points = Results[[3]]
+
+Visualize(Coeff.df, data.points)
+```
+
+## Lab 1(b)
+
+Now repeat 10 experiments, but with 20 observations each. Plot the 10 different lines. What do you conclude?
+
+## Solution 1(b)
+Let's assign values to the parameters for problem 1(b):
+
+```{r Parameters 1(b)}
+N.Exp = 10
+N.Obs = 20
+X.min = 0
+X.max = 10
+epsilon.mu = 0
+epsilon.sd = 1
+```
+
+## Solution 1(b)
+### Coefficients for 20 observations from 10 experiments
+
+```{r}
+Coeff.df <- Experiment(N.Obs, N.Exp, X.min, X.max, epsilon.mu, epsilon.sd)
+Coeff.df
+```
+
+## Solution 1(b)
+### Visualize for 5 observations from 10 experiments
+
+```{r}
+Visualize(Coeff.df)
+```
+
+## Lab 1(c)
+
+For each 5 and 20 observations, use the formula of equations 3.8 to compute the SE for the slope. 
+
+- Plot the SEs in both conditions. 
+- Is this this difference statistically significant? 
+- Why is the SE smaller for 20 observations?
+
+Equation 3.8:
+
+$$SE(\hat{\beta_0})^2 = \sigma^2[\frac{1}{n} + \frac{\bar{x}^2}{\sum_{i=1}^{n}(x_i-\bar{x})^2 }],$$
+$$SE(\hat{\beta_1})^2 = \frac{\sigma^2}{\sum_{i=1}^{n}(x_i-\bar{x})^2 }$$
+
+## Solution 1(c)
+
+```{r , echo=FALSE}
+SE.5 <- Experiment(N.Obs=5, N.Exp, X.min, X.max, epsilon.mu, epsilon.sd)$SE_beta1
+SE.20<- Experiment(N.Obs=20, N.Exp, X.min, X.max, epsilon.mu, epsilon.sd)$SE_beta1
+
+SE.df <- data.frame(SE.5, SE.20) %>%
+  `colnames<-` (c(5,20)) %>%
+  pivot_longer(cols=1:2, names_to = "N.Obs", values_to = 'SE')
+
+ggplot(SE.df, aes(x = N.Obs, y = SE)) +
+geom_boxplot() +
+scale_x_discrete(limits = rev) +
+labs(
+title = "Comparing SE between 5 and 20 observations",
+x = 'Number of Observations',
+y = 'SE'
+)
+
+```
+
+
+## Lab 2
+Now we will try to estimate coefficients of a linear regression model via systematic simulations
+
+(a) We now use the following model 
+
+$$y = 7 + 0.05 *X + \sigma,$$ 
+
+with $\sigma \sim N(0, 1))$
+
+(b) Plot the regression line with 100 observations
+
+(c) Now using 2 for loops over the parameters with about 100 steps for each parameter, generate a figure like figure 3.2A in the book (use similar parameter ranges).
+(d) Find the minimum of RSS curve using `min()`? Plot the minimum on the figure. How does this compare with the parameters given by the `lm()`? 
+(e) Now repeat with about 5 steps for each parameter. Generate the figure again. How does this compare with the parameters given by the `lm()`?  What do you conclude?
+(f) *Bonus*: generate 3D plots like figure 3.2B
+
+## Define the function for calculating RSS
+```{r}
+
+RSS_func <- function(b0, b1, X, y){
+  y_hat = b0 + b1*X
+  RSS = sum( ( y-y_hat )^2 )
+  
+  return(RSS)
+}
+
+```
+
+## 
+```{r}
+i <- 0
+
+N.Obs = 100
+X = runif(N.Obs, min = 0, max = 100)
+epsilon = rnorm(N.Obs, mean = 0, sd = 1)
+#y = 2 + 3*X + epsilon
+y = 7.0 + .05*X + epsilon
+
+beta1 <- beta0 <- 0
+RSS <- 0
+
+for (bet0 in seq(5,9,length.out=100)){
+  for (bet1 in seq(.03,.07,length.out=100)){
+    i <- i+1
+    beta0[i] <- bet0
+    beta1[i] <- bet1
+    RSS[i]   <- RSS_func(bet0, bet1, X, y)
+  }
+}
+
+beta0.opt <- beta0[RSS==min(RSS)]
+beta1.opt <- beta1[RSS==min(RSS)]
+
+```
+
+
+## Solution 2(b)
+
+```{r}
+datapoints = data.frame(X,y)
+ggplot(datapoints, aes(X, y))+
+  geom_point() +
+  geom_abline(aes(slope = beta1.opt, intercept=beta0.opt), color = 2, size = 1.5)
+```
+
+## Solution 2(c)
+
+```{r}
+df.RSS = data.frame(beta0, beta1, RSS)
+var.opt = data.frame(beta0.opt, beta1.opt)
+
+ggplot(df.RSS, aes(beta0, beta1, z=RSS)) +
+  geom_contour(bins = 50) +
+  geom_point(aes(x = beta0.opt, y = beta1.opt), color=2, size=3)
+```
+
+
+## Solution 2(d)
+
+```{r}
+fit = lm(y~X)
+
+beta0.lm = fit$coefficients[1]
+beta1.lm = fit$coefficients[2]
+
+data.frame(beta0.opt, beta1.opt, beta0.lm, beta1.lm)
+```
+
+
+
+
+```{r}
+i <- 0
+
+N.Obs = 100
+X = runif(N.Obs, min = 0, max = 100)
+epsilon = rnorm(N.Obs, mean = 0, sd = 1)
+#y = 2 + 3*X + epsilon
+y = 7.0 + .05*X + epsilon
+
+beta1 <- beta0 <- 0
+RSS <- 0
+
+for (bet0 in seq(5,9,length.out=5)){
+  for (bet1 in seq(.03,.07,length.out=5)){
+    i <- i+1
+    beta0[i] <- bet0
+    beta1[i] <- bet1
+    RSS[i]   <- RSS_func(bet0, bet1, X, y)
+  }
+}
+
+beta0.opt <- beta0[RSS==min(RSS)]
+beta1.opt <- beta1[RSS==min(RSS)]
+
+```
+
+
+## Solution 2(e): Regression
+
+```{r}
+datapoints = data.frame(X,y)
+ggplot(datapoints, aes(X, y))+
+  geom_point() +
+  geom_abline(aes(slope = beta1.opt, intercept=beta0.opt), color = 2, size = 1.5)
+```
+
+## Solution 2(e): Contour plot
+```{r}
+df.RSS = data.frame(beta0, beta1, RSS)
+var.opt = data.frame(beta0.opt, beta1.opt)
+
+ggplot(df.RSS, aes(beta0, beta1, z=RSS)) +
+  geom_contour(bins = 50) +
+  geom_point(aes(x = beta0.opt, y = beta1.opt), color=2, size=3)
+```
+
+## Solution 2(e): Compare Coefficients
+
+```{r}
+fit = lm(y~X)
+
+beta0.lm = fit$coefficients[1]
+beta1.lm = fit$coefficients[2]
+
+data.frame(beta0.opt, beta1.opt, beta0.lm, beta1.lm)
+```
+
+
+## Lab 3
+Now we will try to estimate the parameters via a method called “gradient descent”. Given a random starting point, we will “descend” along the steepest gradient in parameter space until we converge to the minimum.
+
+$$\hat{y}=X\theta$$
+$$L=\frac{1}{2m}\sum_{i=1}^{m}(y_i-\hat{y}_i)^2$$
+$$L=\frac{1}{2m}(\mathbf{y}-X\theta)^T(\mathbf{y}-X\theta)$$
+
+$$...$$
+

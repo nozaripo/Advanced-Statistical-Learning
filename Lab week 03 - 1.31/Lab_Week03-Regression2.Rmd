@@ -1,0 +1,184 @@
+---
+title: 'Lab Week 03: Linear Regression - Part 2'
+author: "Pouria"
+date: "1/26/2022"
+output:
+  slidy_presentation: default
+  ioslides_presentation: default
+  beamer_presentation: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+## Lab Prompt
+
+In this lab, we will study regression with 2 predictors, one continuous, and one qualitative, using the `Credit` data from the package `ISLR`.
+
+1. Build a linear model of `Balance` as a function of `Student` status. Compare the results with that from a t-test. What do you conclude?
+2. Now build a model with `Balance` as a function of `Income`. What do you conclude?
+3. Next, we will build a model with both predictors, `Student` status and `Income`.
+    
+    3.a. Plot the data, using different markers for `Student` status
+    
+    3.b. Develop a model corresponding to Figure 3.7 (left). Plot the model with the data, as in 3.a. What do you conclude?
+    
+    3.c. Now develop and plot the full model corresponding to Figure 3.7 (right). Compare the result with those of an ANCOVA analysis. What do you conclude?
+
+
+
+```{r , echo=FALSE}
+library(ISLR)
+library(ggplot2)
+attach(Credit)
+
+```
+
+## Lab 1
+
+Model `Balance` as a function of `Student`
+
+```{r, include=TRUE, echo=TRUE}
+# Model Balance as a function of Student
+```
+
+```{r 1}
+lm.bal_st <- lm(Balance ~ Student)
+summary(lm.bal_st)
+
+```
+
+## Lab 1
+Compare with t-test
+
+```{r, include=TRUE, echo=TRUE}
+# Compare the results with those from a t-test
+```
+
+
+```{r, include=TRUE}
+ttest_result <- pairwise.t.test(Balance, Student)
+ttest_result
+
+t.test(Balance ~ Student, var.equal = T)
+
+anova.Student <- aov(Balance ~ Student,var.equal = T)
+summary(anova.Student)
+```
+
+
+## Lab 2
+
+Model `Balance` as a function of `Income`
+
+```{r, include=TRUE, echo=TRUE}
+# Model Balance as a function of Income
+```
+
+```{r 2}
+lm.bal_inc <- lm(Balance ~ Income)
+summary(lm.bal_inc)
+```
+
+
+## Lab 3(a)
+
+Plot the data points
+
+```{r 3a, include=TRUE}
+ggplot() +
+  geom_point(Credit, mapping = aes(x = Income, y = Balance, col = Student)) +
+  scale_color_manual(values=c("black", "red")) +
+  theme_bw()
+```
+
+## Lab 3(b)
+
+Model `Balance` as a function of both `Student` and `Income`
+
+```{r, include=TRUE, echo=TRUE}
+# Model Balance as a function of Student and Income
+```
+
+```{r 3b}
+Student_dummy <- rep(0, length(Student))
+Student_dummy[Student=="Yes"] <- 1
+Student_dummy[Student=="No"] <- 0
+Student_dummy <- factor(Student_dummy)
+
+lm.bal_inc_st <- lm(Balance ~ Student_dummy + Income)
+summary(lm.bal_inc_st)
+```
+
+## Lab 3(b)
+
+Or just simply use `Student` with no need for introducing a dummy variable.
+
+```{r 3b how does R imply categorical variables?}
+# or just use Student; R automatically does hot-encoding
+lm.bal_inc_st <- lm(Balance ~ Student + Income)
+summary(lm.bal_inc_st)
+```
+
+
+## Lab 3(b)
+
+Plot `Balance` as a function of `Student` and `Income` (Similar to Fig. 3.7(Left))
+
+```{r 3b plot, include=TRUE}
+plm <- lm(formula = Balance ~ Income + Student, data=Credit)
+
+# plot with lm for outcome ~ pred + factor
+ggplot(Credit, aes(x=Income, y=Balance, col=Student)) +
+  geom_point() +
+  geom_smooth(method = "lm", mapping=aes(y=predict(plm,Credit))) +
+  scale_color_manual(values=c("black", "red")) +
+  ggtitle("Balance ~ Income + Student") +
+  theme_bw()
+
+```
+
+
+## Lab 3(c)
+
+Model `Balance` as a function of both `Student`, `Income` and their interaction
+
+```{r, include=TRUE, echo=TRUE}
+# Model Balance as a function of Student, Income and their interaction
+```
+
+```{r 3c full}
+lm.bal_inc_st_inter <- lm(Balance ~ Income * Student)
+summary(lm.bal_inc_st_inter)
+```
+
+## Lab 3(c)
+
+Compare with ANCOVA
+
+```{r, include=TRUE, echo=TRUE}
+# Compare the results with those from ANCOVA
+```
+
+```{r ANCOVA, include=TRUE}
+aov.bal_inc_st_inter <- aov(Balance ~ Income*Student)
+aov.bal_inc_st <- aov(Balance ~ Student + Income)
+
+ANCOVA <- anova(aov.bal_inc_st_inter, aov.bal_inc_st)
+ANCOVA$`Pr(>F)`
+```
+
+## Lab 3(c)
+
+Plot the full model (Similar to 3.7(Right))
+
+```{r Plot 3c, include=TRUE}
+ggplot(Credit, mapping=aes(x=Income, y=Balance, col=Student)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  scale_color_manual(values=c("black", "red")) +
+  ggtitle("Balance ~ Income * Student") +
+  theme_bw()
+```
+

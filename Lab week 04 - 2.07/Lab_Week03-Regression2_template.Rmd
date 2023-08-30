@@ -1,0 +1,124 @@
+---
+title: 'Lab Week 03: Linear Regression - Part 2'
+author: "BKN"
+date: "1/31/2022"
+output:
+  slidy_presentation: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+## Lab Prompt
+
+In this lab, we will study regression with 2 predictors, one continuous, and one qualitative, using the Credit data from the package `ISLR`
+
+1. Build a linear model of `balance` as a function of `student` status. Compare with a t-test. What do you conclude?
+2. Now build a model with `balance` as a function of `income`. What do you conclude?
+3. Next we will build a model with both regressors, `student` status and `income`.
+    
+    3.a) Plot the data, using different markers for `student status`
+    
+    3.b) Develop a model corresponding to Figure 3.7 left. Plot the model with the data, as in a). What do you conclude?
+    
+    3.c) Now develop and plot the full model corresponding to Figure 3.7. Compare the result with those of an ANCOVA analysis. What do you conclude?
+
+
+
+```{r , echo=FALSE}
+library(ISLR)
+library(ggplot2)
+attach(Credit)
+
+```
+
+## Lab 1
+
+Model `Balance` as a function of `Student`
+
+```{r 1}
+# Model balance as a function of Student
+```
+
+
+## Lab 1
+Compare with t-test
+
+```{r 1 t-test}
+# Compare the results with those from a t-test
+```
+
+
+## Lab 2
+
+Model `Balance` as a function of `Income`
+
+```{r 2}
+# Model Balance as a function of Income
+```
+
+
+## Lab 3(a)
+
+Plot the data points
+
+```{r 3a}
+
+```
+
+## Lab 3(b)
+
+Model `Balance` as a function of both `Student` and `Income`
+
+```{r 3b}
+# Model Balance as a function of Student and Income
+```
+
+
+## Lab 3(b)
+
+Or just simply use `Student` with no need for introducing a dummy variable.
+
+```{r 3b how does R imply categorical variables?}
+# or just use Student; R automatically does hot-encoding
+
+```
+
+
+## Lab 3(b)
+
+Plot `Balance` as a function of `Student` and `Income` (Similar to Fig. 3.7(Left))
+
+```{r 3b plot}
+
+```
+
+
+## Lab 3(c)
+
+Model `Balance` as a function of both `Student`, `Income` and their interaction
+
+```{r 3c model}
+# Model Balance as a function of Student, Income and their interaction
+```
+
+
+## Lab 3(c)
+
+Compare with ANCOVA
+
+```{r 3c ANCOVA}
+# Compare the results with those from ANCOVA
+```
+
+
+
+## Lab 3(c)
+
+Plot the full model (Similar to 3.7(Right))
+
+```{r Plot 3c}
+
+```
+

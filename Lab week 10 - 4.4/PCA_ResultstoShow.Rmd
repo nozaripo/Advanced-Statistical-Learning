@@ -1,0 +1,258 @@
+---
+title: "Lab Week 10 - \n PCA"
+author: "Pouria"
+date: "4/3/2022"
+output: slidy_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, include=T)
+```
+
+```{r, include=F}
+library(ggplot2)
+library(ISLR)
+library(psych)
+library(GGally)
+library(ggbiplot)
+```
+
+
+
+## Lab 1 : USArrest Dataset - Pg. 401
+
+## Row Names
+
+```{r}
+row.names(USArrests)
+
+```
+
+## Variable Names
+
+```{r}
+names(USArrests)
+```
+
+## First and second moments
+```{r}
+apply(USArrests, 2, mean)
+sapply(USArrests, mean)
+sapply(USArrests, var)
+```
+
+## Perform PCA
+```{r}
+pr.out <- prcomp (USArrests, scale = T)
+
+names(pr.out)
+```
+
+## Summary of the output
+```{r}
+summary(pr.out)
+```
+
+## Plot the entire output
+
+```{r}
+plot(pr.out)
+```
+
+
+
+## `$center` and `$scale`
+
+```{r}
+pr.out$center
+
+```
+
+```{r}
+pr.out$scale
+```
+
+## Rotation matrix
+
+```{r}
+pr.out$rotation
+```
+
+## Biplot
+
+```{r}
+biplot(pr.out, scale = 0)
+```
+
+## Biplot to match the plot in the book
+
+```{r}
+pr.out$rotation=-pr.out$rotation
+pr.out$x=-pr.out$x
+biplot (pr.out , scale =0)
+```
+
+
+## Use `$sdev` to obtain variance explained by each PC
+
+```{r}
+pr.var <- pr.out$sdev^2
+pr.var
+```
+
+
+```{r}
+pve <- pr.var/sum(pr.var)
+pve.cum <- cumsum(pve)
+pve.cum
+```
+
+## Plot the cumulative variance explained
+
+```{r}
+
+df.var <- data.frame(pve.cum, n.comp = 1:length(pve.cum))
+
+ggplot(df.var) +
+  geom_point(aes(x = n.comp, y = pve.cum)) +
+  geom_line(aes(x = n.comp, y = pve.cum)) +
+  xlab("No. of PCs") +
+  ylab("Proportion of Variance Explained")
+```
+
+
+
+
+
+## Lab 3: NCI60 Data - Pg. 407 
+
+
+## NCI60 Dataset
+
+```{r}
+nci.labs <- NCI60$labs
+nci.data <- NCI60$data
+
+
+```
+
+
+## Investigate the correlations for the first few variables
+
+```{r, message=F, warning=F}
+ggpairs(data.frame(nci.data[, 1:5]))
+```
+
+## Using `pairs.panels()` from `psych` library
+
+```{r, echo=T}
+pairs.panels(nci.data[,1:5],
+             gap=0,
+             bg = c("red", "yellow", "blue", "green", "black", "purple", "cyan")[factor(nci.labs)],
+             pch=21)
+```
+
+
+## Perform PCA
+
+```{r}
+pca.out <- prcomp(nci.data, scale. = T)
+```
+
+
+
+## Plot the pairs or correlation plot for PCs
+
+```{r}
+pairs.panels(pca.out$x[,1:5],
+             gap=0,
+             bg = c("red", "yellow", "blue", "green", "black", "purple", "cyan")[factor(nci.labs)],
+             pch=21)
+
+
+```
+
+
+## Score Plots (Base R)
+
+```{r}
+Cols=function (vec){
+  cols=rainbow (length(unique(vec)))
+  return(cols[as.numeric (as.factor(vec))])
+  }
+```
+
+```{r}
+par(mfrow=c(1,2))
+plot(pca.out$x[,1:2], col=Cols(nci.labs), pch=19,
+xlab="Z1",ylab="Z2")
+plot(pca.out$x[,c(1,3)], col=Cols(nci.labs), pch=19,
+xlab="Z1",ylab="Z3")
+```
+
+## Score Plots (ggplot)
+
+```{r}
+df.pca.NCI <- data.frame(Z1 = pca.out$x[,1],
+                         Z2 = pca.out$x[,2],
+                         Z3 = pca.out$x[,3],
+                         Cancer.Type = nci.labs)
+
+
+ggplot(df.pca.NCI) +
+  geom_point(aes(Z1, Z2, col = Cancer.Type), size = 2) +
+  theme_bw()
+  
+
+```
+
+```{r}
+ggplot(df.pca.NCI) +
+  geom_point(aes(Z1, Z3, col = Cancer.Type), size = 2) +
+  theme_bw()
+```
+
+
+## Summary of the output
+
+```{r}
+summary(pca.out)
+```
+
+
+
+## Plot Variance Explained Using `summary()`
+
+```{r}
+ggplot() +
+  geom_point(aes(1:length(summary(pca.out)$importance[3,]) ,
+                 summary(pca.out)$importance[3,])) +
+  xlab("Number of PCs") +
+  ylab("Cumulative PVE")
+```
+
+
+
+## Biplot in ggplot 
+
+Use `ggbiplot()` as an alternative to base R `biplot()`
+
+```{r, include=T, echo=T}
+# install.packages("remotes")
+# remotes::install_github("vqv/ggbiplot")
+# library(ggbiplot)
+ggbiplot(pca.out,
+         obs.scale = 1,
+         var.scale = 1,
+         groups = nci.labs,
+         ellipse = TRUE,
+         circle = TRUE,
+         ellipse.prob = 0.68) +
+  scale_color_discrete(name = '') +
+  theme(legend.direction = 'horizontal',
+               legend.position = 'top')
+```
+
+
+
+

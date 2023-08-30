@@ -1,0 +1,221 @@
+---
+title: "Lab Week 11 - Clustering"
+author: "Pouria"
+date: "4/11/2022"
+output: slidy_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, include=T)
+```
+
+```{r, message=F, warning=F}
+library(ggplot2)
+library(mvtnorm)
+library(Matrix)
+```
+
+## 
+** Exercise 10, p. 417 **
+
+In this problem, you will generate simulated data, and then perform
+PCA and K-means clustering on the data.
+
+(a) Generate a simulated data set with 20 observations in each of
+three classes (i.e. 60 observations total), and 50 variables.
+Hint: There are a number of functions in R that you can use to
+generate data. One example is the rnorm() function; runif() is
+another option. Be sure to add a mean shift to the observations
+in each class so that there are three distinct classes.
+
+(b) Perform PCA on the 60 observations and plot the first two principal component score vectors. Use a different color to indicate
+the observations in each of the three classes. If the three classes
+appear separated in this plot, then continue on to part (c). If
+not, then return to part (a) and modify the simulation so that
+there is greater separation between the three classes. Do not
+continue to part (c) until the three classes show at least some
+separation in the first two principal component score vectors.
+
+(c) Perform K-means clustering of the observations with K = 3.
+How well do the clusters that you obtained in K-means clustering compare to the true class labels?
+Hint: You can use the table() function in R to compare the true
+class labels to the class labels obtained by clustering. Be careful
+how you interpret the results: K-means clustering will arbitrarily
+number the clusters, so you cannot simply check whether the true
+class labels and clustering labels are the same.
+
+(d) Perform K-means clustering with K = 2. Describe your results.
+
+(e) Now perform K-means clustering with K = 4, and describe your
+results.
+
+(f) Now perform K-means clustering with K = 3 on the first two
+principal component score vectors, rather than on the raw data.
+That is, perform K-means clustering on the 60 × 2 matrix of
+which the first column is the first principal component score
+vector, and the second column is the second principal component
+score vector. Comment on the results.
+
+(g) Using the scale() function, perform K-means clustering with
+K = 3 on the data after scaling each variable to have standard
+deviation one. How do these results compare to those obtained
+in (b)? Explain.
+
+
+## a) Generate the simulated data
+
+- Generate a simulated data set with 20 observations in each of three classes (i.e. 60 observations total), and 50 variables.
+
+
+
+
+```{r, echo = T, include=T}
+
+
+set.seed(123)
+
+n.obs = 600
+n.var = 50
+
+data = matrix(, nrow = 0, ncol = 50)
+
+for (i in 1:3){
+  
+  center = rnorm(50, 0, 30)
+  
+  sigma <- matrix(rnorm(n.var^2, 0, 1)*2-1, ncol=n.var)
+  sigma <- t(sigma) %*% sigma
+  
+  # sigma = diag(n.var)
+  
+  data = rbind(data, rmvnorm(n.obs/3, mean = center, sigma = sigma))
+}
+
+x = data
+true.labels <- factor(c(rep(1, n.obs/3), rep(2, n.obs/3), rep(3, n.obs/3)))
+
+pr.out <- prcomp(x)
+
+summary(pr.out)$importance[3,]
+```
+
+Or:
+
+```{r, echo = T, include=T}
+# set.seed(123)
+# x <- matrix(rnorm(20 * 3 * 50, mean = 0, sd = 1), ncol = 50)
+# x[1:20, 2] <- 1
+# x[21:40, 1] <- 2
+# x[21:40, 2] <- 2
+# x[41:60, 1] <- 1
+# true.labels <- factor(c(rep(1, 20), rep(2, 20), rep(3, 20)))
+```
+
+
+
+
+
+## Check the mean and variance of the variables
+
+```{r, include=F}
+apply(x, 2, mean)
+apply(x, 2, var)
+
+```
+
+
+## b) PCA and plot the first two PC scores
+
+**Note 1**: This part is used for visualization for now and to hint the user on if they need to revisit part (a) and fix the distribution.
+
+**Note 2**: The results are going to be directly used in part (f).
+
+- Perform PCA on the `60` observations and plot the **first two principal component** score vectors. Use a different color to indicate the observations in each of the three classes. If the three classes appear separated in this plot, then continue on to part (c). If not, the return to part (a) and modify the simulation so that there is greater separation between the three classes. Do not continue to part (c) until the three classes show at least some separation in the first two principal component score vectors.
+
+
+```{r, include=F}
+pr.out <- prcomp(x)
+
+summary(pr.out)$importance[3,]
+```
+
+
+## Plot
+
+
+
+```{r, include=T}
+
+df.pca <- data.frame(pr.out$x[, 1:2], true.labels)
+
+ggplot(df.pca) +
+  geom_point(aes(PC1, PC2, col = true.labels))
+
+```
+
+
+
+## c) K-means Clustering with `K=3`
+
+- Perform K-means clustering of the observations with `K=3`. How well do the clusters that you obtained in K-means clustering compare to the true class labels? Create a confusion matrix. Make plots and comment on the clusters.
+
+```{r}
+km.out <- kmeans(x, 3, nstart = 20)
+table(true.labels, km.out$cluster)
+```
+
+
+## d) K-means Clustering with `K=2`
+
+- Perform K-means clustering with `K=2`. Describe your results.
+
+Create a confusion matrix. Make plots and comment on the clusters.
+
+```{r, include=F}
+km.out <- kmeans(x, 2, nstart = 20)
+table(true.labels, km.out$cluster)
+```
+
+
+
+## e) K-means Clustering with `K=4`
+
+- Now perform K-means clustering with `K=4`, and describe your results.
+
+Create a confusion matrix. Make plots and comment on the clusters.
+
+```{r, include=F}
+km.out <- kmeans(x, 4, nstart = 20)
+table(true.labels, km.out$cluster)
+```
+
+
+## f) K-means Clustering with `K=3` on the first two PCs
+
+- Now perform K-means clustering with `K=3` on the first two principal component score vectors, rather than on the raw data.
+
+Create a confusion matrix. Make plots and comment on the clusters.
+
+```{r, include=F}
+# km.out <- kmeans(pr.out$x[, 1:2], centers = sort(kmeans(pr.out$x[, 1:2], centers = 3, nstart=20)$centers), nstart = 20)
+km.out <- kmeans(pr.out$x[, 1:2], 3, nstart=20)
+table(true.labels, km.out$cluster)
+
+ggplot() +
+  geom_point(aes(pr.out$x[, 1], pr.out$x[, 2], col = km.out$cluster))
+```
+
+
+
+## g) K-means Clustering with `K=3` after scaling
+
+- Using the `scale()` function, perform K-means clustering with `K=3` on the data after scaling each variable to have standard deviation one. How do these results compare to those obtained in (b) ? Explain.
+
+Create a confusion matrix. Make plots and comment on the clusters.
+
+```{r, include=F}
+km.out <- kmeans(scale(x), 3, nstart = 20)
+table(true.labels, km.out$cluster)
+```
+
+

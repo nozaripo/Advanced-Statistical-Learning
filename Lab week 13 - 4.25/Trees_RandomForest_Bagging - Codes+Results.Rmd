@@ -1,0 +1,432 @@
+---
+title: "Tree-Based & Ensemble Methods"
+author: "Pouria"
+date: "4/25/2022"
+output: slidy_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T)
+```
+
+
+## Libraries
+```{r, warning=F, message=F}
+# library(ISLR)
+library(MASS)
+library(tree)
+library(randomForest)
+library(magrittr)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+```
+
+## Aim
+
+We aim to gain hands-on experience with tree-based regression and ensemble methods on `Boston` data set to predict `medv` as a function of all other variables. 
+
+You may access `Boston` within the library `MASS`.
+
+
+## Set seed
+
+```{r, include=T, echo=T}
+set.seed(123)
+```
+
+
+## a) Split the data
+
+Split the into training and test sets with the train-to-test ratio of 80%/20%.
+
+```{r}
+data = Boston
+dim(Boston)
+
+train.size <- nrow(data)*0.80
+train <- sample(nrow(data), train.size)
+
+Boston.train <- data[train,]
+Boston.test  <- data[-train,]
+
+```
+
+
+## b) Fit a regression tree and plot - Prompt
+
+- Fit a tree onto the data and print the summary.
+
+- Visualize the tree.
+
+- Obtain the test MSE for the full tree.
+
+## b) Fit a regression tree and plot
+
+1. Fit a tree and print the summary
+
+```{r}
+tree.Boston <- tree(medv ~ ., data = Boston.train)
+summary(tree.Boston)
+```
+
+
+
+## b) Fit a regression tree and plot
+
+2. Plot the tree
+
+```{r}
+plot(tree.Boston)
+text(tree.Boston, pretty = 0, cex = 0.7)
+```
+
+
+## b) Fit a regression tree and plot
+
+2. Plot the tree; alternative way using libraries `rpart` and `rpart.plot`.
+
+**Note**: There are a lot of other relevant libraries and functions; `ggparty`, `partykit`, `ctree()`, if you are interested.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# Load rpart and rpart.plot
+library(rpart)
+library(rpart.plot)
+# Create a decision tree model
+tree <- rpart(medv ~ ., data = Boston.train, cp=0.015, xval=0)
+# Visualize the decision tree with rpart.plot
+rpart.plot(tree, box.palette="RdBu", shadow.col="gray80")
+```
+
+
+
+
+## b) Fit a regression tree and plot
+
+3. Obtain the test MSE for this full tree.
+
+```{r}
+yhat <- predict(tree.Boston, newdata = Boston.test)
+mean((yhat - Boston.test$medv)^2)
+```
+
+
+## c) Cross-Validation - Pruning - Prompt
+
+- Perform cross-validation on the tree.
+
+- Plot Deviance (`dev`) as a function of tree size.
+
+- Plot the test MSE alongside the CV MSE and training MSE across tree size.
+
+- Prune the tree with the best parameter, and print a summary of the output, and visualize the tree.
+
+- Output the test MSE for the best pruned tree.
+
+
+## c) Cross-Validation - Pruning
+
+1. Perform cross-validation on the tree and print the output.
+
+```{r}
+cv.Boston <- cv.tree(tree.Boston)
+cv.Boston
+
+```
+
+
+## c) Cross-Validation - Pruning
+
+2. Plot the results of the CV and show on the plot the tree size that corresponds to the best (least) CV error (`dev`).
+
+```{r}
+tree.min <- which.min(cv.Boston$dev)
+
+df.cv <- data.frame(size = cv.Boston$size,
+                    dev = cv.Boston$dev)
+
+df.cv %>%
+  ggplot(aes(size, dev))+
+  geom_line(size=1.1, col="grey60") +
+  geom_point(size=2) +
+  geom_point(aes(size[tree.min], dev[tree.min]), col = "red", size=4) +
+  xlab("Tree Size") +
+  ylab("CV Deviance (RSS)")
+```
+
+
+## c) Cross-Validation - Pruning
+
+- Before moving on to the next step, try a couple of different values for the seed and run everything up until here. Look at the cross-validation error plot on previous slide. Why do you think you get different result each time? 
+
+- Remember to set the seed back to `111` after all the changes and run the markdown again.
+
+
+
+## c) Cross-Validation - Pruning
+
+3. Plot the test MSE alongside the CV MSE and training MSE across tree size.
+
+*Note*: For CV MSE, you may use the deviance output, but also ensure to divide it by `train.size`. 
+
+```{r}
+tree.size.len <- length(cv.Boston$size)
+tree.testMSE.arr <- array(rep(0,tree.size.len))
+tree.trainMSE.arr <- array(rep(0,tree.size.len))
+
+for (i in seq(tree.size.len-1,1,by=-1)){
+  prune1.Boston <- prune.tree(tree.Boston, best = cv.Boston$size[i])
+  yhat <- predict(prune1.Boston, newdata = Boston.test)
+  tree.testMSE.arr[i] = mean((yhat - Boston.test$medv)^2)
+  yhat <- predict(prune1.Boston, newdata = Boston.train)
+  tree.trainMSE.arr[i] = mean((yhat - Boston.train$medv)^2)
+}
+
+tree.testMSE.arr[tree.size.len] <- var(Boston.test$medv)
+
+tree.trainMSE.arr[tree.size.len] = var(Boston.test$medv)
+
+```
+
+
+```{r}
+data.frame(size = df.cv$size,
+           train.MSE= tree.trainMSE.arr,
+           cv.MSE = df.cv$dev/(train.size),
+           test.MSE = tree.testMSE.arr) %>%
+  pivot_longer(cols=2:4, names_to = "Error.Type", values_to = "Error.Value") %>%
+  ggplot(aes(size, Error.Value, col=Error.Type)) +
+  geom_line(size=1.05) +
+  geom_point(size=1.5) +
+  scale_color_manual(values=c("black", "#d1495b", "#0072B2")) +
+  theme(legend.position = "top") +
+  xlab("Tree Size") +
+  ylab("MSE")
+  
+
+
+
+```
+
+
+## c) Cross-Validation - Pruning
+
+4. Prune the tree with the best parameter selected above, and print a summary of the output.
+
+```{r}
+prune.Boston <- prune.tree(tree.Boston, best = cv.Boston$size[tree.min])
+
+summary(prune.Boston)
+
+```
+
+## c) Cross-Validation - Pruning
+
+5. Visualize the pruned tree.
+
+```{r}
+plot(prune.Boston)
+text(prune.Boston, pretty = 0, cex = 0.9)
+```
+
+
+
+## c) Cross-Validation - Pruning
+
+6. Obtain the test MSE for the best pruned model.
+
+```{r}
+yhat <- predict(prune.Boston, newdata = Boston.test)
+mean((yhat - Boston.test$medv)^2)
+```
+
+
+## d) Bagging - Prompt
+
+- Use the bagging approach in order to analyze this data. 
+
+- What test MSE do you obtain? 
+
+- Use the `importance()` function to determine which variables are most important.
+
+- Plot the importance values in a bar plot.
+
+## d) Bagging
+
+1. Perform bagging and print the output
+
+```{r}
+p <- ncol(Boston) - 1
+
+bag.Boston <- randomForest(medv ~ ., data = Boston.train, mtry = p)
+# bag.Boston <- randomForest(medv ~ ., data = Boston.train,ntree=1000, mtry = p)
+bag.Boston
+
+```
+
+## d) Bagging
+
+1. Look into the bagging output; what are the MSE values in that output? Print the mean and range of MSE. How do you compare this result to the MSE obtained from the pruned tree in (c)?
+
+```{r}
+mean(bag.Boston$mse)
+range(bag.Boston$mse)
+```
+
+
+## d) Bagging
+
+2. What test MSE do you obtain? Compare it with that obtained using the pruned tree in (c).
+
+```{r}
+yhat.bag <- predict(bag.Boston, newdata = Boston.test)
+bag.test.mse <- mean((yhat.bag - Boston.test$medv)^2)
+bag.test.mse
+```
+
+## d) Bagging
+
+3. Use the `importance()` function to determine which variables are most important.
+
+```{r}
+bag.imp <- importance(bag.Boston)
+bag.imp
+```
+
+
+## d) Bagging
+
+4. Plot the importance values in a bar plot.
+
+```{r}
+data.frame(bag.imp) %>%
+  mutate(rowname = rownames(bag.imp)) %>%
+  ggplot(aes(x = reorder(rowname, IncNodePurity), y = 100*IncNodePurity/max(IncNodePurity))) +
+  geom_bar(stat = "identity", aes(fill = IncNodePurity), width=.7) + 
+  scale_fill_gradient(low = "grey70", high = "LightSeaGreen") + 
+  scale_color_gradient(low = "grey70", high = "LightSeaGreen") +
+  scale_y_continuous(limits = c(0, 110))+
+  coord_flip() +
+  theme(legend.position = "none") + 
+  labs(title = "Boston Dataset - Random Forest - Variable Importance", 
+       x = "Variable Names",
+       y = "Importance") +
+  geom_label(
+    aes(label = round(100*IncNodePurity/max(IncNodePurity),2), col = 100*IncNodePurity/max(IncNodePurity)), 
+    hjust = -.1, nudge_x = 0,
+    size = 3.2, fontface = "bold",
+    ## turn into white box without outline
+    fill = "white", label.size = 0) +
+  labs(title = "Variable Importance - Bagging", 
+       x = "Variable Names",
+       y = "Importance") +
+  theme_grey() +
+  theme(legend.position = "none")
+
+```
+
+```{r}
+par(mfrow=c(1,2))
+varImpPlot (bag.Boston)
+# plot(rf.imp)
+```
+
+
+
+## e) Random Forest - Prompt
+
+- Use random forests to analyze this data. 
+
+- What test MSE do you obtain? 
+
+- Use the `importance()` function to determine which variables are most important. 
+
+- Describe the effect of m, the number of variables considered at each split, on the error rate
+obtained.
+
+## e) Random Forest
+
+1. Perform random forest and print the output
+
+```{r}
+rf.Boston <- randomForest(medv ~ ., data = Boston.train)
+# rf.Boston <- randomForest(medv ~ ., mtry=8, data = Boston.train)
+
+rf.Boston
+
+```
+
+## e) Random Forest
+
+1. Look into the random forest output; what are the MSE values in that output? Print the mean and range of MSE. How do you compare this result to the MSE obtained from the pruned tree in (c) and bagging result in (d)?
+
+```{r}
+mean(rf.Boston$mse)
+range(rf.Boston$mse)
+```
+
+
+## e) Random Forest
+
+2. What **test MSE** do you obtain? Compare it with those obtained using the pruned tree in (c) and using Bagging in (d).
+
+```{r}
+yhat.rf <- predict(rf.Boston, newdata = Boston.test)
+rf.test.mse <- mean((yhat.rf - Boston.test$medv)^2)
+rf.test.mse
+```
+
+## e) Random Forest
+
+3. Use the `importance()` function to determine which variables are most important.
+
+```{r}
+rf.imp <- importance(rf.Boston)
+rf.imp
+```
+
+
+## e) Random Forest
+
+4. Plot the importance values in a bar plot. 
+
+
+
+```{r}
+data.frame(rf.imp) %>%
+  mutate(rowname = rownames(rf.imp)) %>%
+  ggplot(aes(x = reorder(rowname, IncNodePurity), y = 100*IncNodePurity/max(IncNodePurity))) +
+  geom_bar(stat = "identity", aes(fill = IncNodePurity), width=.7) + 
+  scale_fill_gradient(low = "grey70", high = "LightSeaGreen") + 
+  scale_color_gradient(low = "grey70", high = "LightSeaGreen") +
+  scale_y_continuous(limits = c(0, 110))+
+  coord_flip() +
+  theme(legend.position = "none") + 
+  labs(title = "Boston Dataset - Random Forest - Variable Importance", 
+       x = "Variable Names",
+       y = "Importance") +
+  geom_label(
+    aes(label = round(100*IncNodePurity/max(IncNodePurity),2), col = 100*IncNodePurity/max(IncNodePurity)), 
+    hjust = -.1, nudge_x = 0,
+    size = 3.2, fontface = "bold",
+    ## turn into white box without outline
+    fill = "white", label.size = 0) +
+  labs(title = "Variable Importance - Random Forest", 
+       x = "Variable Names",
+       y = "Importance") +
+  theme_grey() +
+  theme(legend.position = "none")
+```
+
+
+## f) Random Forest vs. Bagging - Make comments
+
+- First, How is Random Forest different from Bagging in essence? 
+
+- Look back at both CV errors and test errors obtained using Random Forest and Bagging. How did using each of these ensemble methods change the fitting performance and predictive power of a single tree. Can you relate this to the effect of the number of variables considered at each split?
+
+
+
+

@@ -1,0 +1,414 @@
+---
+title: "BKN 599 - Final Exam"
+        
+author: "FirstName LastName"
+Date:  "May 9, 2022"
+Time: "2:00 - 6:00 PM"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Data Description
+We will use the ICARE rehabilitation data (Winstein, Jama 2016). The goal is to predict the in an arm and hand impairment score (Upper extremity  Fugl Meyer) after training FM2 as a function of multiple baseline variables including baseline FM1.
+ 
+Note 1: these data are not publicly available, so PLEASE DO NOT DISTRIBUTE outside of this class.
+Note 2: the actual data set has actually many more observations but we deleted the rows with missing data
+ 
+
+## Variables
+
+Y = `FM2` is the dependent variable
+
+X = all baseline/demographic data are the independent variables  - the meaning of the variables are given below
+ 
+
+`FM1` = hand Fugl Meyer at baseline
+
+`FM2` = Fugl Meyer after training
+
+`CHAMchallenge` = a motivation question in the confidence in arm and hand test     
+
+`ave_CAHM` =   average confidence in arm and hand test        
+
+`EQ_index` =     generic health status questionnaire 
+
+`SIS_hand` = Stroke impact scale of hand function        
+
+`RNLIadj` = A reintegration to normal living index          
+
+`NIHtot` = NIH stroke impact scale ; A brief assessment of physical function post-stroke
+
+`log_mean_time_MA_PA` = Time on the Wolf motor function; more affected hand
+
+`log_mean_time_LA_PA` = Time on the Wolf motor function; less affected hand       
+
+`grip_MA` = grip strength, more affected
+
+`grip_LA` = grip strength, less affected      
+
+`dose_hours`  = actual dose of training    
+
+`onset_to_rand` = time since stroke at start of trial
+
+`age_at_rand`   = age at start of trial
+
+`old_stroke` = whether participants had a stroke or not prior
+
+
+# Required Libraries
+
+```{r, warning=F, message=F}
+library(ggplot2)
+library(dplyr)
+library(glmnet)
+library(tidyr)
+library(magrittr)
+library(tree)
+library(randomForest)
+```
+
+
+
+# Load the data
+
+```{r}
+load("data_final.Rda")
+str(data_final)
+```
+
+To get rid of `pid`:
+
+```{r}
+data_final = data_final[,-1]
+```
+
+
+
+# Question 1 (10 points)
+
+**Q1. Interpreting and plotting a linear model output (10 points)**
+
+Create a binary variable by comparing `log_mean_time_MA_PA` to its mean. Make a regression model with two predictors: `FM1` and this new binary variable and their interactions. Compute the two slopes and intercepts from the model output. Using these values plot the regression lines of FM2 as a function of FM1 for the two cases when log_mean_time_MA_PA is high and low. Add the data for the two cases with different marker colors. Add a complete legend. 
+
+*Note: Remember that you should create only one plot, so do not split the data for separate subplots.*
+
+```{r}
+data <- data_final %>% 
+  mutate(log_mean_time_MA_PA_binary = factor(ifelse(
+    log_mean_time_MA_PA>mean(log_mean_time_MA_PA), 
+    "High", "Low"))
+    )
+
+str(data)
+```
+
+
+```{r}
+lm.fit <- lm(FM2 ~ FM1*log_mean_time_MA_PA_binary, data)
+summary(lm.fit)
+```
+
+
+Now if we were to ignore the p-values and draw the regression lines we would simply get:
+
+```{r}
+ggplot(data, aes(x=FM1, y=FM2, col=log_mean_time_MA_PA_binary)) +
+  geom_point(alpha=.7) +
+  geom_smooth(method = "lm", formula = y~x, size = 1.2) +
+  scale_color_manual(values = c("black", "red")) +
+  theme_bw()
+```
+
+However, we see in the linear model that the slope interaction term is not significant; thus we will see what the new curves are going to look like if we set `FM1:log_mean_time_MA_PA_binaryLow = 0` or equivalently `lm.fit$coefficients[4] = 0`.
+
+```{r}
+# Get the coefficients and zero the ones that are not significant 
+# (p-values > .05)
+coeff <- coef(summary(lm.fit))
+lm.fit$coefficients[coeff[,4]>.05] = 0
+
+predslm = predict(lm.fit, interval = "confidence")
+datlm = cbind(data, predslm)
+
+
+ggplot(datlm, aes(FM1, y = FM2, color = log_mean_time_MA_PA_binary) ) +
+  geom_point() +
+  geom_ribbon( aes(ymin = lwr, ymax = upr, 
+                   fill = log_mean_time_MA_PA_binary, color = NULL), alpha = .15) +
+  geom_line( aes(y = fit), size = 1) +
+  scale_color_manual(values = c("black", "red")) +
+  scale_fill_manual(values = c("black", "red")) +
+  theme_bw()
+```
+
+
+
+
+# Question 2 (10 + 20 points)
+
+**Q2. Estimating regression coefficients CI with a manually implemented bootstrap. (30 points:: 10 + 20)**
+
+1.	Estimate 95% confidence interval via the “typical” least square regression.
+A.	`set.seed(123)`. Fit a lasso model (with optimal lambda according to 1 SE) to predict `FM2` from the data. 
+B.	Perform a “typical” regression model (`lm()`) to predict `FM2` using only the lasso-selected variables. Report the 95% confidence interval of the estimated coefficients using the R output (which uses the formulas in the text book).
+
+2.	Estimate 95% confidence interval via the bootstrap. 
+A.	`set.seed(123)`. Now implement a bootstrap “manually” (i.e., write the code to do the sampling without any boot function from R) to estimate the 95% confidence interval of the parameters for the lasso-selected variables. Plot the histogram of the coefficient estimate distribution for `FM1`. Use percentiles to get the 95% CIs for all parameters. Make sure your results do not depend (too much) on your number of samples by generating many samples (report results for few, many, and even more samples).
+B.	Compare the coefficient estimates and the CIs from both methods - `lm()` and regression and from the bootstrap. Discuss similarities/differences in your R notebook (note that any differences may be understood by performing regression diagnostics – remember the assumptions of regression `and notably how are computed the regression coefficient SE for regression using formulas in the textbook`)
+
+
+## Q2.1 - A
+
+
+```{r}
+x = model.matrix ( FM2~.,data_final)
+y= data_final$FM2
+```
+
+
+
+```{r}
+# Finding best lambda
+set.seed(123)
+lasso_reg = cv.glmnet(x, y,alpha = 1)
+plot(lasso_reg)
+```
+
+```{r}
+bestlam =lasso_reg$lambda.1se
+
+# Finding coefficients for best lambda
+out.lasso <- glmnet(x, y, alpha=1)
+lasso.coef <- predict (out.lasso , type = "coefficients", s = bestlam)
+lasso.coef
+```
+
+```{r}
+coeff<- lasso.coef[3:17,]
+
+
+selected_vars = names(coeff [ coeff != 0 ] )
+
+lasso_df = data_final[,c(selected_vars,"FM2")]
+head(lasso_df)
+
+```
+
+## Q2.1 - B
+
+```{r}
+# Fitting linear model
+lin_mod = lm(FM2~., lasso_df)
+summary(lin_mod)
+```
+
+```{r}
+# Checking confidence intervals
+confint(lin_mod, level=0.95)
+```
+
+## Q2.2 - A
+
+```{r}
+# Bootstrap
+set.seed(123)
+datalist = matrix(rep(0,10000*7),  ncol = 7)
+
+for(i in 1:10000){
+  # sample data
+  sample_df = lasso_df[sample(nrow(lasso_df), nrow(lasso_df),replace =TRUE),] 
+  samp_lin_mod = lm(FM2~., sample_df)
+  datalist[i,] =   samp_lin_mod$coefficients
+}
+# boots_values <- dplyr::bind_rows(datalist)
+boot.coeff <- data.frame(datalist) %>%
+  set_colnames(names(coefficients(lin_mod)))
+# Bootstrap mean and 95p confidence interval
+colMeans(boot.coeff)
+apply(boot.coeff, 2, function(x){mean(x)+c(-1.96,1.96)*sd(x)})
+
+# linear model mean and 95p confidence interval
+coef(lin_mod)
+confint(lin_mod, level=0.95)
+```
+
+Plotting the histogram of the parameter distribution for FM1 resulted from Bootstrapping:
+
+```{r}
+ggplot(boot.coeff)+
+  geom_histogram(aes(x=FM1), bins=100)
+```
+
+
+## Q2.2 - B
+
+
+
+
+# Question 3 (25 + 5)
+
+**Q3. Trees and random forest.  (30 points: 25 + 5)**
+
+- Divide the data into a training and a test set of 20% of the data assigned to the test. Use `sample(nrow(.), 0.2*nrow(.))`.
+
+1.	
+a.	Predict `FM2` from the data using a pruned tree via cross-validation. Plot the tree. Discuss your results.
+b.	Predict `FM2` using bagging. Discuss your results (including variable importance)
+c.	Predict `FM2` using random forest. Discuss your results.
+d.	Plot the variable importance for random forest. Compare with the pruned tree and discuss your results.  
+
+2.	Predict `FM2` using the lasso model of Q2 with the same test set. Then, Compare the MSE on the test set of the four different methods.
+
+2.	Predict `FM2` using `a lasso model selected based on cross-validation and using the same test set`. Then, Compare the MSE on the test set of the four different methods.
+
+*Hint: Recall that prediction is about investigating how well a model performs on new data, i.e., the test set here*
+
+## Q3.1 - A
+
+**Tree-based Regression**
+
+First split the data into train/test sets.
+
+```{r}
+
+# Creating test and train sets
+test_index =sample(nrow(data_final), 0.3*nrow(data_final))
+test_df = data_final[test_index,]
+train_df = data_final[-test_index,]
+
+# Train tree and predict MSE
+tree.FM2 =tree(FM2~. , train_df)
+tree.pred=predict(tree.FM2 ,test_df )
+plot(tree.pred ,test_df$FM2)
+```
+
+
+Prune the tree
+
+```{r}
+set.seed(123)
+cv.FM2 =cv.tree(tree.FM2 )
+plot(cv.FM2)
+prune.FM2 =prune.tree (tree.FM2 ,best =3)
+plot(prune.FM2 )
+text(prune.FM2 ,pretty =0)
+```
+
+
+Test Error
+
+```{r}
+tree.pred_prune =predict(prune.FM2, test_df)
+plot(tree.pred_prune,test_df$FM2)
+MSE_pruned_tree = mean((tree.pred_prune-test_df$FM2)^2)
+MSE_pruned_tree
+```
+
+
+## Q3.1 - B
+
+```{r}
+# Bagging
+set.seed(123)
+bag.FM2 =randomForest(FM2~.,data=train_df, mtry=15, importance =TRUE)
+bag.FM2
+```
+
+
+```{r}
+yhat.bag = predict (bag.FM2 ,newdata =test_df)
+plot(yhat.bag , test_df$FM2)
+abline (0,1)
+```
+
+```{r}
+MSE_bagging= mean(( yhat.bag -test_df$FM2)^2)
+MSE_bagging
+```
+
+
+
+
+## Q3.1 - C
+
+```{r}
+# Random Forest
+set.seed(123)
+RF.FM2 =randomForest(FM2~.,data=train_df, importance =TRUE)
+RF.FM2
+```
+
+```{r}
+yhat.RF = predict (RF.FM2 ,newdata =test_df)
+plot(yhat.RF , test_df$FM2)
+abline (0,1)
+```
+
+```{r}
+MSE_RF= mean(( yhat.RF -test_df$FM2)^2)
+MSE_RF
+```
+
+
+## Q3.2
+
+```{r}
+varImpPlot(RF.FM2)
+```
+
+
+# Question 4 (10 + 10 + 10)
+
+**Q4/ PCA and K-means of the lasso-selected predictor variables. (30 points: 10 + 10 + 10)**
+
+1.	Perform a PCA on all predictor variables **selected by the lasso in Q2**. Using a **95%** variable accounted for cut-off, how many PCs do you find? Plot the results with a biplot. Discuss your results.
+
+2.	Now, using K = 2, perform a K-means clustering on the predictor variables selected by the lasso.
+
+3.	Plot the K-means results in the  PC1/PC2 axes. Discuss your results.
+
+
+```{r}
+pr.out = prcomp(select(lasso_df, -"FM2"),scale = TRUE)
+variance_PCS =(pr.out$sdev)^2/sum((pr.out$sdev)^2)
+cumsum_PCA = cumsum(variance_PCS)
+
+ggplot() + 
+  geom_line(aes(x = 1:length(cumsum_PCA), y = cumsum_PCA)) +
+  geom_point(aes(x = 1:length(cumsum_PCA), y = cumsum_PCA)) +
+  xlab("# PC") + ylab("Cumulative PVE")
+
+# 5 PCs needed for 90% variance
+```
+
+```{r}
+ggbiplot::ggbiplot(pr.out)
+```
+
+
+
+## Kmeans clustering with k =2
+```{r}
+km.out =kmeans (select(lasso_df, -"FM2"),2, nstart =20)
+# Cluster assignment
+km.out$cluster
+```
+
+
+## Plotting clusters
+```{r}
+library(factoextra)
+fviz_cluster(km.out, data = select(lasso_df, -"FM2"),
+             # palette = c("#2E9FDF", "#00AFBB", "#E7B800"), 
+             geom = "point",
+             ellipse.type = "convex", 
+             ggtheme = theme_bw())
+            
+```

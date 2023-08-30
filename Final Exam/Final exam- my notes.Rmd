@@ -1,0 +1,164 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+---
+title: "Midterm BKN 599"
+author: "Nadir Nibras"
+date: "5/6/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+We will use the Excite rehabilitation data (Wolf et al. JAMA, 2006),  with a test set
+
+```{r}
+rm(list = ls());
+cat("\014")  
+graphics.off() 
+
+library(ggplot2)
+library(dplyr)
+library(glmnet)
+```
+ 
+ # Lasso fitting and bootstrapping
+```{r}
+load("data_final.Rda")
+data_final = data_final[,-1]
+x = model.matrix ( FM2~.,data_final)[,-1]
+y= data_final$FM2
+
+# Finding best lambda
+lasso_reg = cv.glmnet(x, y,alpha = 1)
+bestlam =lasso_reg$lambda.min
+
+# Finding coefficients for best lambda
+grid =10^ seq (10,-2, length =100)
+out=glmnet (x,y,alpha =1, lambda =grid)
+lasso.coef=predict (out ,type ="coefficients",s=bestlam )[2:16 ,]
+
+lasso.coef
+selected_vars = names(lasso.coef[lasso.coef>0])
+
+lasso_df = data_final[,c(selected_vars,"FM2")]
+
+# Fitting linear model
+lin_mod = lm(FM2~., lasso_df)
+summary(lin_mod)
+
+
+# Checking confidence intervals
+confint(lin_mod, names(lasso_df), level=0.95)
+
+# Bootstrap
+datalist = list()
+
+for(i in 1:10000){
+  # sample data
+  sample_df = lasso_df[sample(nrow(lasso_df), nrow(lasso_df),replace =TRUE),] 
+  samp_lin_mod = lm(FM2~., sample_df)
+  datalist[[i]] =   samp_lin_mod$coefficients
+}
+boots_values <- dplyr::bind_rows(datalist)
+
+# Bootstrap mean and 95p confidence interval
+colMeans(boots_values)
+apply(as.matrix(boots_values), 2, function(x){mean(x)+c(-1.96,1.96)*sd(x)})
+
+# linear model mean and 95p confidence interval
+coef(lin_mod)
+confint(lin_mod, names(lasso_df), level=0.95)
+```
+
+# Trees and RF
+```{r}
+
+library (tree)
+
+# Creating test and train sets
+test_index =sample(nrow(data_final), 0.3*nrow(data_final))
+test_df = data_final[test_index,]
+train_df = data_final[-test_index,]
+
+# Train tree and predict MSE
+tree.FM2 =tree(FM2~. , train_df)
+tree.pred=predict(tree.FM2 ,test_df )
+plot(tree.pred ,test_df$FM2)
+
+
+set.seed(1)
+cv.FM2 =cv.tree(tree.FM2 )
+plot(cv.FM2)
+prune.FM2 =prune.tree (tree.FM2 ,best =3)
+plot(prune.FM2 )
+text(prune.FM2 ,pretty =0)
+
+
+tree.pred_prune =predict(prune.FM2, test_df)
+plot(tree.pred_prune,test_df$FM2)
+MSE_pruned_tree = mean((tree.pred_prune-test_df$FM2)^2)
+
+# Bagging
+
+library (randomForest)
+set.seed (1)
+bag.FM2 =randomForest(FM2~.,data=train_df, mtry=15, importance =TRUE)
+bag.FM2
+
+yhat.bag = predict (bag.FM2 ,newdata =test_df)
+plot(yhat.bag , test_df$FM2)
+abline (0,1)
+MSE_bagging= mean(( yhat.bag -test_df$FM2)^2)
+
+# Bagging
+
+set.seed (1)
+RF.FM2 =randomForest(FM2~.,data=train_df, mtry=4, importance =TRUE)
+RF.FM2
+
+yhat.RF = predict (RF.FM2 ,newdata =test_df)
+plot(yhat.RF , test_df$FM2)
+abline (0,1)
+MSE_RF= mean(( yhat.RF -test_df$FM2)^2)
+```
+PCA and K means
+```{r}
+pr.out = prcomp(data_final,scale = TRUE)
+variance_PCS =(pr.out$sdev)^2/sum((pr.out$sdev)^2)
+cumsum(variance_PCS)
+
+# 7 PCs needed for 90% variance
+
+biplot (pr.out , scale =0)
+```
+
+
+
+# Kmeans clustering with k =2
+```{r}
+km.out =kmeans (data_final,7, nstart =20)
+# Cluster assignment
+km.out$cluster
+```
+
+# Plotting clusters
+```{r}
+library(factoextra)
+fviz_cluster(km.out, data = data_final,
+             # palette = c("#2E9FDF", "#00AFBB", "#E7B800"), 
+             geom = "point",
+             ellipse.type = "convex", 
+             ggtheme = theme_bw()
+             )
+```

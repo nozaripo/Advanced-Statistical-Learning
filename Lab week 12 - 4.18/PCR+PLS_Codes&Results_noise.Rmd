@@ -1,0 +1,451 @@
+---
+title: "General Regression: Ridge, Lasso, PCR & PLS"
+author: "Pouria"
+date: "4/18/2022"
+output: slidy_presentation
+
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T)
+```
+
+## Prompt
+
+Looking at the `College` data set, we intend to predict the number of applications received, `Apps`, using the other variables.
+
+a) Split the data set into a training set and a test set with 20% of the data held out as the test set. 
+
+b. Fit a PCR model on the training set, with M chosen by cross-validation. Report the test error obtained, along with the value of M selected by cross-validation.
+
+c) Fit a PLS model on the training set, with M chosen by cross-validation. Report the test error obtained, along with the value
+of M selected by cross-validation.
+
+d) Fit a linear model using least squares on the training set, and report the test error obtained.
+
+e) Fit a ridge regression model on the training set, with $\lambda$ chosen
+by cross-validation. Report the test error obtained.
+
+f) Fit a lasso model on the training set, with λ chosen by cross-validation. Report the test error obtained, along with the number of non-zero coefficient estimates.
+
+g) Comment on the results obtained. How accurately can we predict the number of college applications received? Calculate test R-squared values. Is there much
+difference among the test errors resulting from these five approaches?
+
+
+## Libraries
+
+```{r, warning=F, message=F}
+library(ISLR)
+library(glmnet)
+library(pls)
+library(ggplot2)
+library(GGally)
+library(dplyr)
+library(tidyr)
+```
+
+
+## Set seed
+
+```{r}
+set.seed(11)
+```
+
+
+## (a) Split the data
+
+Split the data set into a training set and a test set. Hold 20% of the data out for test. 
+
+```{r}
+sum(is.na(College))
+
+# College[, "Apps"] = College[, "Apps"] + rnorm(dim(College)[1], 1000, 4500)
+
+College[, "Apps"] = College[, "Apps"] + rnorm(dim(College)[1], 1000, 10000)
+
+
+# College1 <- data.frame(College,
+#                        var1 = rnorm(dim(College)[1], 1000,5000),
+#                        var2 = rnorm(dim(College)[1], 2000, 1000))
+
+train.size = round(dim(College)[1] *.8)
+train = sample(dim(College)[1], train.size)
+test = -train
+
+College.train <- College[train, ]
+College.test  <- College[test, ]
+
+dim(College.train)
+train.size
+var(College[, "Apps"])
+```
+
+
+
+
+
+## (b) Principal Component Regression (PCR)
+
+- Fit a PCR model on the training set, with number of PCs chosen by cross-validation. Visualize the results.
+
+- Report the test error corresponding with the number of PCs selected from above.
+
+- Report the variance explained in both predictors and response spaces across different number of PCs.
+
+
+## (b) PCR
+
+1. Perform PCR on the training set and visualize MSE across number of PCs using cross-validation.
+
+
+```{r}
+pcr.cv = pcr(Apps~., data=College.train, scale=T, validation="CV")
+
+validationplot(pcr.cv, val.type="MSEP")
+
+```
+
+## (b) PCR
+
+- Can you manually plot what `validationplot()` gave you above?
+
+
+```{r}
+res.pcr <- apply(pcr.cv$residuals[,1,], 2, function(x) mean(x^2))
+
+ggplot() +
+  geom_line(aes(1:pcr.cv$ncomp, res.pcr)) +
+  geom_point(aes(1:pcr.cv$ncomp, res.pcr)) +
+  xlab("Number of PCs") +
+  ylab("MSEP") +
+  scale_x_continuous(breaks = seq(1,pcr.cv$ncomp, 1))
+```
+
+## (b) PCR
+
+Use `selectNcomp()` to select the number of PCs that correspond to 1 SE.
+
+```{r}
+N.PC <- selectNcomp(pcr.cv, method = "onesigma", plot = TRUE)
+
+```
+
+
+
+## (b) PCR
+
+2. Report the test MSE for PCR with the number of PCs selected above. 
+
+```{r}
+pcr.pred = predict(pcr.cv, College.test, ncomp=N.PC)
+
+pcr.mse <- mean((College.test[, "Apps"] - pcr.pred)^2)
+
+pcr.mse
+```
+
+
+## (b) PCR
+
+3. Report a summary of the PCR model and visualize the variance explained in predictors space for different number of PCs.
+
+- Summary
+
+```{r}
+summary(pcr.cv)
+```
+
+## (b) PCR
+
+3. Report a summary of the PCR model and visualize the variance explained in both predictors and response variable spaces for different number of PCs.
+
+- Visualize the variance explained
+
+*Hint 1*: You may access the variance in predictors through `$Xvar`. Remember to use cumulative sum.
+
+*Hint 2*: Also, `$residuals[,1,]` will give you the residuals for each number of PCs. Note that residuals and variance in response variable `Apps` are related. Variance explained in response variable space is the same as $R^2$.
+
+
+```{r}
+XVar <- cumsum(pcr.cv$Xvar) / pcr.cv$Xtotvar
+
+Yres <- apply(pcr.cv$residuals[,1,], 2, function(x) 1 - mean(x^2)/mean((College.train[,"Apps"]-mean(College.train[,"Apps"]))^2))
+
+pcr.explained.df <- data.frame(N.Comp = 1:pcr.cv$ncomp, X = XVar, Y = Yres) %>%
+  pivot_longer(cols = 2:3, names_to = "Variance", values_to = "Var.Values")
+
+
+ggplot(pcr.explained.df) +
+  geom_line(aes(N.Comp,Var.Values, col = Variance), size = 1.1) +
+  geom_point(aes(N.Comp,Var.Values, col = Variance)) +
+  scale_color_manual(values = c("red", "black")) +
+  xlab("Number of Principal Components") +
+  ylab("Variance Explained") +
+  scale_x_continuous(breaks = seq(1,pcr.cv$ncomp, 1)) +
+  scale_y_continuous(breaks = seq(0,1, .1))
+```
+
+
+
+
+
+## (c) Partial Least Square Regression (PLSR)
+
+- Fit a PLS model on the training set, with number of components chosen by cross-validation. 
+
+- Report the test error obtained, along with the value
+of M selected by cross-validation.
+
+- Report the variance explained in both predictors and response spaces across different number of PCs.
+
+## (c) PLSR
+
+1. Perform PLS on the training set and visualize MSE across number of components using cross-validation.
+
+```{r}
+pls.cv = plsr(Apps~., data=College.train, scale=T, validation="CV")
+validationplot(pls.cv, val.type="MSEP")
+```
+
+## (c) PLSR
+
+- Plot manually
+
+```{r}
+res.pls <- apply(pls.cv$residuals[,1,], 2, function(x) mean(x^2))
+
+ggplot() +
+  geom_line(aes(1:pls.cv$ncomp, res.pls)) +
+  geom_point(aes(1:pls.cv$ncomp, res.pls)) +
+  xlab("Number of PCs") +
+  ylab("MSEP") +
+  scale_x_continuous(breaks = seq(1,pls.cv$ncomp, 1))
+```
+
+## (c) PLSR
+
+Use `selectNcomp()` to select the number of PCs that correspond to 1 SE.
+
+```{r}
+N.PC <- selectNcomp(pls.cv, method = "onesigma", plot = TRUE)
+
+```
+
+
+## (c) PLSR
+
+2. Report the test MSE for PLS with the number of PCs selected above. 
+
+```{r}
+pls.pred = predict(pls.cv, College.test, ncomp=N.PC)
+pls.mse <- mean((College.test[, "Apps"] - pls.pred)^2)
+pls.mse
+```
+
+
+## (c) PLSR
+3. Report a summary of the PCR model and visualize the variance explained in predictors space for different number of PCs.
+
+- Summarize
+
+```{r}
+summary(pls.cv)
+```
+
+## (c) PLSR
+
+3. Report a summary of the PCR model and visualize the variance explained in both predictors and response variable spaces for different number of PCs.
+
+- Visualize the variance explained
+
+```{r}
+XVar <- cumsum(pls.cv$Xvar) / pls.cv$Xtotvar
+
+Yres <- apply(pls.cv$residuals[,1,], 2, function(x) 1 - mean(x^2)/mean((College.train[,"Apps"]-mean(College.train[,"Apps"]))^2))
+
+pls.explained.df <- data.frame(N.Comp = 1:pls.cv$ncomp, X = XVar, Y = Yres) %>%
+  pivot_longer(cols = 2:3, names_to = "Variance", values_to = "Var.Values")
+
+
+ggplot(pls.explained.df) +
+  geom_line(aes(N.Comp,Var.Values, col = Variance), size = 1.1) +
+  geom_point(aes(N.Comp,Var.Values, col = Variance)) +
+  scale_color_manual(values = c("red", "black")) +
+  xlab("Number of Principal Components") +
+  ylab("Variance Explained") +
+  scale_x_continuous(breaks = seq(1,pls.cv$ncomp, 1)) +
+  scale_y_continuous(breaks = seq(0,1, .1))
+```
+
+## (b) & (c)
+
+Compare the results from PCR and PLS. How are the values and plots in (c) different from those obtained for PCR in (b). How can this difference be rationalized?
+
+
+
+
+
+## (d) Fit a linear model
+
+Fit a linear model using least squares on the training set, and report the test error obtained.
+
+```{r}
+lm.fit = lm(Apps~., data=College.train)
+summary(lm.fit)
+
+```
+
+```{r}
+lm.pred = predict(lm.fit, College.test)
+ols.mse <- mean((College.test[, "Apps"] - lm.pred)^2)
+
+ols.mse
+```
+
+## (e) Ridge Regression
+
+- Fit a ridge regression model on the training set, with $\lambda$ chosen
+by cross-validation. 
+
+- Report the test error obtained.
+
+## (e) Ridge Regression
+
+1. First, turn the data into matrix to take care of categorical variables; One method to do this is `model.matrix` for both test and train sets. Note that this should be used for `cv.glmnet()`.
+
+```{r}
+train.mat = model.matrix(Apps~., data=College.train)
+test.mat = model.matrix(Apps~., data=College.test)
+
+```
+
+## (e) Ridge Regression
+
+2. Now, Find the best $\lambda$.
+
+```{r}
+cv.ridge = cv.glmnet(train.mat, College.train[, "Apps"], alpha=0)
+lambda.best = cv.ridge$lambda.min
+lambda.best
+
+```
+
+
+## (e) Ridge Regression
+
+3. Now, report the test error using Ridge with best $\lambda$.
+
+```{r}
+ridge.pred <- predict(cv.ridge, newx=test.mat, s=lambda.best)
+
+ridge.mse <- mean((College.test[, "Apps"] - ridge.pred)^2)
+
+ridge.mse
+
+```
+
+## (f) Lasso Regression
+
+- Fit a lasso model on the training set, with $\lambda$ chosen by cross-validation. 
+- Report the test error obtained, ...
+
+  - along with the coefficients.
+
+
+## (f) Lasso Regression
+
+1. Now, Find the best $\lambda$.
+
+```{r}
+cv.lasso = cv.glmnet(train.mat, College.train[, "Apps"], alpha=1)
+lambda.best = cv.lasso$lambda.1se
+lambda.best
+
+```
+
+
+## (f) Lasso Regression
+
+2. Now, report the test error using Lasso with best $\lambda$.
+
+```{r}
+
+lasso.pred <- predict(cv.lasso, newx=test.mat, s=lambda.best)
+
+lasso.mse <- mean((College.test[, "Apps"] - lasso.pred)^2)
+
+lasso.mse
+
+```
+
+## (f) Lasso Regression
+
+3. Report the coefficients of the best Lasso model with best $\lambda$.
+
+```{r}
+# lasso.out <- glmnet(model.matrix(Apps~., data=College), College[, "Apps"], alpha=1)
+predict(cv.lasso, type="coefficients", s=lambda.best)
+
+```
+
+
+## (g) Compare Models
+
+Comment on the results obtained. 
+
+- How accurately can we predict the number of college applications received? 
+
+- Is there much difference among the test errors resulting from these five approaches? Visualize using bar-plots.
+
+- Calculate test R-squared values and compare. Visualize using bar-plots.
+
+
+
+## (g) Compare Models
+
+1. Is there much difference among the test errors resulting from these five approaches? Visualize using bar-plots.
+
+```{r}
+df.mse <- data.frame(Model = c("LM", "Ridge", "Lasso", "PCR", "PLS"),
+                     MSE = c(ols.mse, ridge.mse, lasso.mse, pcr.mse, pls.mse))
+
+ggplot(df.mse) +
+  geom_col(aes(Model, MSE), width = .3) +
+  ylab("Test MSE") +
+  theme_bw() 
+```
+
+## (g) Compare Models
+
+2. Calculate test R-squared values and compare. Visualize using bar-plots.
+
+
+```{r}
+test.avg = mean(College.test[, "Apps"])
+
+TSS = mean((College.test[, "Apps"] - test.avg)^2)
+
+R2.calc <- function(RSS, TSS){
+  return (1 - RSS/TSS)
+}
+
+ols.r2 <- R2.calc(ols.mse, TSS)
+ridge.r2 <- R2.calc(ridge.mse, TSS)
+lasso.r2 <- R2.calc(lasso.mse, TSS)
+pcr.r2 <- R2.calc(pcr.mse, TSS)
+pls.r2 <- R2.calc(pls.mse, TSS)
+
+df.r2 <- data.frame(Model = c("LM", "Ridge", "Lasso", "PCR", "PLS"),
+                     r2 = c(ols.r2, ridge.r2, lasso.r2, pcr.r2, pls.r2))
+
+ggplot(df.r2) +
+  geom_col(aes(Model, r2), width = .3) +
+  ylab("Test R2") +
+  scale_y_continuous(breaks = seq(0,1, .1), expand = c(0,1)) +
+  theme_bw()
+
+```
+
+
+

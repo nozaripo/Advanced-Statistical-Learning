@@ -1,0 +1,471 @@
+---
+title: "Lab Week 8 - Shrinkage"
+author: "Pouria"
+date: "3/21/2022"
+output: slidy_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, include = F)
+```
+
+```{r libraries, warning=F, message=F}
+library(magrittr) # You can use %>% for nested functions in data manipulation
+# library(dplyr)    # For data manipulation
+library(tidyr)    # For tidying your data (columns and rows)
+library(ggplot2)  # For plotting
+# library(boot)     # For bootstrapping and cross-validation
+# library(nlme)     # For mixed-effect models
+library(leaps)
+library(glmnet)
+library(tikzDevice)
+# Feel free to add your libraries of interest if needed
+
+```
+
+
+## Lab Prompt
+
+The goal of this lab is to apply and understand the shrinkage methods in recovering the true model for a synthetic set of data. A true model to generate the data is given and known. Now, you are intending to see given only the synthetic data, will you be able to infer this true model? So you will assume don't know what the true model is and that you only know the data. You will then consider all first to the tenth powers of `x` in predicting `y`. However, can shrinkage methods tell you if your decision on variable selection was correct?! Let's see!
+
+**Exercise 8 page 262.**
+
+Questions a, b, c, e.  
+
+Note: in e, use 10-fold CV.
+
+Then:
+
+- Generate plots like Figure 6.13. (with the vertical line for the optimal lambda). Comment.
+
+- Now fit a ridge regression model. Find the optimal lambda via CV.
+
+- Generate a plot like Figure 6.13 for the ridge model. Comment.
+
+Compare the 10-fold CV error for the best lasso and ridge and the MSE on best subset model. What do you conclude?
+
+
+
+
+
+## 8(a, b): Generate the synthetic data
+
+- Set the seed to `111`.
+
+- Use uniform distribution for generating `X` to range from `-5` to `5`.
+
+- Use normal distribution $\cal{N}(0, 20)$ for the residual $\epsilon$.
+
+- Sample four integers ranging up to `5` with replacement. Use these values for $\beta_0$ through $\beta_3$, respectively.
+
+Generate a response vector `y` according to the model
+
+$$ y = \beta_0 + \beta_1X + \beta_2X^2 + \beta_3X^3 + \epsilon$$ 
+
+
+
+
+```{r}
+
+set.seed(111)
+
+# X = rnorm(100, 0, 5)
+x = runif(100, -5, 5)
+
+eps = rnorm(100, 0, 20)
+
+beta = sample(5, 4, replace = T)
+
+# beta[5:11] = 0
+
+
+b0 = beta[1]
+b1 = beta[2]
+b2 = beta[3]
+b3 = beta[4]
+
+y = b0 + b1*x + b2*x^2 + b3*x^3 + eps
+
+
+
+# Matrix: XW
+X = matrix(rep(1, 10*100), nrow = 100)
+
+for (i in 1:10){
+  X[,i] <- x^i
+}
+
+# y = beta[1] + X%*%beta[2:11] + eps
+
+
+beta
+
+```
+
+
+## 8(a, b): plot `y` as a function of `X`
+
+```{r, include = T}
+datapoints = data.frame(X, y)
+ggplot(datapoints) +
+  geom_point(mapping = aes(X1, y), col = "black") +
+  theme_bw() +
+  xlab("X")
+
+```
+
+
+
+
+
+________________________________________________________________________________
+
+## 8(c): Perform Best subset selection
+
+Use the `regsubsets()` to perform best subset selection in order to choose the best model containing the predictors $X$, $X^2$,..., $X^{10}$. What is the best model obtained according to `Cp`, `BIC`, and `adjr2`? 
+
+```{r}
+regfit <- regsubsets(y~., datapoints, nvmax = 10)
+regfit.summary <- summary(regfit)
+regfit.summary
+```
+
+
+
+```{r}
+adjr.sub<- regfit.summary$adjr2
+Cp.sub  <- regfit.summary$cp
+BIC.sub <- regfit.summary$bic
+```
+
+## Create plots
+Show some plots to provide evidence for your answer. 
+
+- Scale Plot
+
+```{r, include = T}
+
+plot(regfit ,scale="bic")
+
+```
+
+## Create plots
+Show some plots to provide evidence for your answer. 
+
+- BIC against number of variables
+
+```{r, include = T}
+# df.bestsubset <- data.frame(adjr.sub, Cp.sub, BIC.sub)
+id.min_bic <- which.min(BIC.sub)
+min_bic <- min(BIC.sub)
+
+ggplot() +
+  geom_point(aes(1:dim(X)[2], BIC.sub), col = "black", size = 3) + 
+  geom_line(aes(1:dim(X)[2], BIC.sub), col = "black") +
+  geom_point(aes(id.min_bic, min_bic), col = "red", size = 6) +
+  xlab("Number of Variables in Best Subsets Selected") +
+  ylab("BIC") +
+  theme_bw()
+
+```
+
+
+## Coefficients from best subset
+- Report the coefficients of the best model obtained.
+
+```{r}
+coef(regfit, which.min(regfit.summary$bic))
+```
+
+## Find the MSE for the best subset
+
+```{r}
+lm.best.subset <- lm(y~ X2 + X3, datapoints)
+lm.best.subset.pred <- predict(lm.best.subset, newx = X)
+MSE.best.subset <- mean((lm.best.subset.pred - y)^2)
+```
+
+```{r}
+# for(i in 1:10){
+#   pred=predict (best.fit ,Hitters [folds ==j,],id=i)
+#   cv.errors[j,i]= mean( ( Hitters$Salary[ folds==j]-pred)^2)
+# + }
+# + }
+```
+
+
+
+________________________________________________________________________________
+
+
+## 8(d): Perform Lasso Regression
+
+Now fit a **lasso** model to the simulated data, again using $X$, $X^2$,..., $X^{10}$ as predictors. Use **10-fold** cross-validation. 
+
+- Select the optimal value of $\lambda_{opt}$. 
+
+- Create plots of the cross-validation error as a function of $\lambda$.
+
+```{r, include = T}
+cv.out.lasso <- cv.glmnet(X, y, alpha=1)
+
+
+lam.min <- cv.out.lasso$lambda.min
+lam.1se <- cv.out.lasso$lambda.1se
+
+
+
+dfl <- data.frame(lam = cv.out.lasso$lambda,
+                  cvm = cv.out.lasso$cvm,
+                  cvup = cv.out.lasso$cvup,
+                  cvlo = cv.out.lasso$cvlo)
+
+ggplot(dfl, aes(lam, cvm, ymin=cvlo, ymax=cvup), fill="red" ) +
+  geom_line(size = 1.2, col = "black") +
+  geom_ribbon(alpha = .2) +
+  geom_point(col = "red", size = 2) +
+  geom_vline(aes(xintercept = lam.min), linetype="dashed")+
+  geom_vline(aes(xintercept = lam.1se), linetype="dashed") +
+  xlab("lambda") +
+  ylab("CV Error") +
+  theme_bw()
+  
+
+
+```
+
+
+## Use log-transform 
+
+```{r, include = T}
+ggplot(dfl, aes(log(lam), cvm, ymin=cvlo, ymax=cvup), fill="red" ) +
+  geom_line(size = 1.2, col = "black") +
+  geom_ribbon(alpha = .2) +
+  geom_point(col = "red", size = 2) +
+  geom_vline(aes(xintercept = log(lam.min)), linetype="dashed")+
+  geom_vline(aes(xintercept = log(lam.1se)), linetype="dashed") +
+  xlab("Log(lambda)") +
+  ylab("CV Error") +
+  theme_bw()
+```
+
+## Or use base R
+
+```{r, include = T}
+plot(cv.out.lasso)
+
+```
+
+
+
+## Find the best $\lambda$
+
+```{r}
+lambda.opt.lasso <- cv.out.lasso$lambda.1se
+lambda.opt.lasso
+```
+
+
+## 8(d): Lasso: Other plots
+**Prepare the data frame**
+
+- Generate CV error and standardized coefficients plots against coefficients relative L1-norms. (similar to Figure 6.13 including the dotted vertical line representing those values corresponding to the optimal $\lambda$). Comment.
+
+```{r, include = T, echo=T}
+# The outputs from cv.glmnet
+CV= cv.out.lasso$cvm
+lam = cv.out.lasso$lambda
+
+
+# The general lasso model for the full dataset;
+# Remember alpha=1: Lasso // alpha=0: Ridge
+out.lasso <- glmnet(X, y, alpha=1)
+
+
+# The most complex model (no regularization lambda=0) with Lasso
+# This will be used as the constant denominator obtain the relative 
+#   norms on the x-axis
+coef.L1.norm.full = as.array(predict (out.lasso , type = "coefficients", s = 0))
+L1.norm.full <- sum(abs(coef.L1.norm.full[2:11]))
+
+
+# Now compute the coefficients for all the lambda values obtained from cv.glmnet
+# We need to use all those lambda values in glmnet to obtain the coefficients
+Coeff.Mat = matrix(rep(0, length(lam)*10), nrow = length(lam))
+L1.norm = 0
+for (i in 1:length(lam)){
+  co = as.array(predict (out.lasso , type = "coefficients", s = lam[i]))
+  Coeff.Mat[i,] = co[2:11]
+  L1.norm[i] = sum(abs(Coeff.Mat[i,]))/L1.norm.full
+}
+
+
+# The L1.norm and cv error corresponding to the optimal lasso lambda (1se lambda)
+L1.norm.opt <- L1.norm[lam==lambda.opt.lasso]
+CV.lasso.opt <- CV[lam==lambda.opt.lasso]
+
+
+# Putting lambda, variable coefficients, L1-norm and cv error in data frame
+# Use pivot_longer to handle the variables (want to use Variable for color in ggplot)
+df <- data.frame(lam, Coeff.Mat, L1.norm, CV) %>%
+  pivot_longer(cols = 2:11, names_to = "Variable", values_to = "Value")
+```
+
+## 8(d): Lasso: Other plots
+**Plot CV against L1 norm**
+
+```{r, include = T}
+ggplot(df) +
+  geom_line(aes(L1.norm, CV), col="red", size = 1.2) +
+  geom_vline(aes(xintercept = L1.norm.opt), linetype="dotted", size = 1.1) +
+  theme_bw() +
+  xlab("Relative L1 Norm") +
+  ylab("Cross-Validation Error")
+
+```
+
+## 8(d): Lasso: Other plots
+**Plot Standardized Coefficients against L1 norm**
+
+```{r, include = T}
+ggplot(df) +
+  geom_line(aes(L1.norm, Value, col=Variable), size = 1.2) +
+  geom_vline(aes(xintercept = L1.norm.opt), linetype="dotted", size = 1.1) +
+  theme_bw() +
+  xlab("Relative L1 Norm") +
+  ylab("Standardized Coefficients")
+
+```
+
+
+
+
+## 8(d): Lasso: Coefficients
+- Report the resulting coefficient estimates, and discuss the results obtained.
+
+```{r}
+Coeff.lasso <- predict (out.lasso , type = "coefficients", s = lambda.opt.lasso)
+Coeff.lasso
+```
+
+
+
+________________________________________________________________________________
+
+
+
+
+
+
+## 8(e): Perform Ridge Regression
+
+Now fit a **ridge** model to the simulated data, again using $X$, $X^2$,..., $X^{10}$ as predictors. Use **10-fold** cross-validation. 
+
+- Select the optimal value of $\lambda_{opt}$. 
+
+- Create plots of the cross-validation error as a function of $\lambda$.
+
+```{r, include = T}
+cv.out.ridge <- cv.glmnet(X, y, alpha=0)
+plot(cv.out.ridge)
+```
+
+## Find best $\lambda$
+
+```{r}
+lambda.opt.ridge <- cv.out.ridge$lambda.1se
+lambda.opt.ridge
+```
+
+
+## 8(e): Ridge: Other plots
+**Prepare the data frame**
+
+- Generate CV error and standardized coefficients plots against coefficients relative L2-norms. (similar to Figure 6.13 including the dotted vertical line representing those values corresponding to the optimal $\lambda$). Comment.
+
+```{r}
+CV= cv.out.ridge$cvm
+lam = cv.out.ridge$lambda
+
+out.ridge <- glmnet(X, y, alpha=0)
+
+# L2.norm.full <- sqrt(sum((coef(lm(y~X))[2:11])^2))
+L2.norm.full <- as.array(predict (out.ridge , type = "coefficients", s = 0))
+L2.norm.full <- sqrt(sum((L2.norm.full[2:11])^2))
+
+
+Coeff.Mat = matrix(rep(0, length(lam)*10), nrow = length(lam))
+L2.norm = 0
+for (i in 1:length(lam)){
+  co = as.array(predict (out.ridge , type = "coefficients", s = lam[i]))
+  Coeff.Mat[i,] = co[2:11]
+  L2.norm[i] = sqrt(sum((Coeff.Mat[i,])^2))/L2.norm.full
+}
+
+L2.norm.opt <- L2.norm[lam==lambda.opt.ridge]
+CV.ridge.opt <- CV[lam==lambda.opt.ridge]
+
+
+df <- data.frame(lam, Coeff.Mat, L2.norm, CV) %>%
+  pivot_longer(cols = 2:11, names_to = "Variable", values_to = "Value")
+```
+
+## 8(e): Ridge: Other plots
+**Plot CV against L2 norm**
+
+```{r, include = T}
+ggplot(df) +
+  geom_line(aes(L2.norm, CV), col="red", size = 1.2) +
+  geom_vline(aes(xintercept = L2.norm.opt), linetype="dotted", size = 1.1) +
+  theme_bw() +
+  xlab("Relative L2 Norm") +
+  ylab("Cross-Validation Error")
+
+```
+
+## 8(e): Ridge: Other plots
+**Plot Standardized Coefficients against L2 norm**
+
+```{r, include = T}
+ggplot(df) +
+  geom_line(aes(L2.norm, Value, col=Variable), size = 1.2) +
+  geom_vline(aes(xintercept = L2.norm.opt), linetype="dotted", size = 1.1) +
+  theme_bw() +
+  xlab("Relative L2 Norm") +
+  ylab("Standardized Coefficients")
+
+```
+
+
+
+
+## 8(e): Ridge: Coefficients
+- Report the resulting coefficient estimates, and discuss the results obtained.
+
+```{r}
+Coeff.ridge <- predict (out.ridge , type = "coefficients", s = lambda.opt.ridge)
+Coeff.ridge
+```
+
+
+
+
+
+________________________________________________________________________________
+
+
+## 8(f): Compare Lasso and Ridge
+
+Compare the 10-fold CV error and the coefficients obtained from the lasso, ridge, and best subset. What do you conclude?
+
+
+```{r}
+data.frame(CV.lasso.opt, CV.ridge.opt, MSE.best.subset)
+```
+
+```{r}
+data.frame(as.array(Coeff.ridge), as.array(Coeff.lasso),  beta) %>%
+  set_colnames(c("Ridge", "Lasso",  "True"))
+```
+
+

@@ -1,0 +1,375 @@
+---
+title: 'Lab Week 07: Linear Mixed Effect Model'
+author: "Pouria"
+date: "2/26/2022"
+output:
+  slidy_presentation: default
+  ioslides_presentation: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+```{r, warning=F, message=F}
+library(nlme)
+library(ggplot2)
+library(modelsummary)
+library(dplyr)
+library(tidyr)
+library(magrittr)
+```
+
+
+## "Orthodontic growth" dataset with longitudinal data
+
+**Orthodontic growth data, Example from Pinheiro and Bates (2000)**
+
+Investigators at the University of North Carolina Dental School followed the growth of 27 children(16 males, 11 females) from age 8 until age 14. Every two years they measured the distance between the pituitary and the pterygomaxillary fissure, two points that are easily identified on xray exposures of the side of the head.
+
+```{r}
+attach(Orthodont)
+head(Orthodont)
+```
+
+## Plot the data
+
+```{r}
+ggplot(Orthodont) +
+  geom_point(aes(x = age, y = distance)) +
+  geom_line(aes(x = age, y = distance), color="blue") +
+  facet_wrap (~Subject) +
+  xlab("Age (yr)") + 
+  ylab("Distance from pituitary to pterygomaxillary fissure (mm)") +
+  theme_bw()
+```
+
+```{r}
+ggplot(Orthodont) +
+  geom_point(aes(x = age, y = distance, col = Sex)) +
+  xlab("Age (yr)") + 
+  ylab("Distance from pituitary to pterygomaxillary fissure (mm)") +
+  scale_color_manual(values=c("black", "red")) +
+  theme_bw()
+```
+
+
+
+## Questions
+
+- Is there an age effect on growth?
+
+- Is there a gender difference?
+
+- Is growth different in both sexes (Is there
+an interaction)?
+
+- Is an ordinary linear regression model
+adequate?
+
+
+
+## Simple Linear Regression to fit all
+
+### One model fits all
+
+$$y_j^{(i)} = \beta_0 + \beta_1 * age_j^{(i)} + \epsilon_j^{(i)}$$
+where 
+
+Subject_ID:   $i=1,..., M  \qquad (M=27)$   
+
+Year_ID:      $j=1,..., N  \qquad (N=4)$  
+
+residuals:    $\epsilon_j^{(i)} = \cal N(0,\sigma^2)$
+
+
+## Simple Linear Regression to fit all
+
+```{r}
+lm.fit_all <- lm(distance ~ I(age-11)*Sex, Orthodont)
+summary(lm.fit_all)
+```
+
+## Residual Plot
+
+```{r}
+ggplot(lm.fit_all) +
+  geom_point(aes(x = .fitted, y = .resid, col = Sex)) +
+  scale_color_manual(values=c("black", "red")) +
+  xlab("Fitted Values") + ylab("Standardized Residuals") +
+  theme_bw()
+```
+
+## Residuals for each subject
+
+```{r}
+ggplot(lm.fit_all) +
+  geom_boxplot(aes(x = Subject, y = .resid, col = Sex)) +
+  scale_color_manual(values=c("black", "red")) +
+  xlab("Subject") + ylab("Standardized Residuals") +
+  theme_bw()
+```
+
+## Fit a simple regression model per subject
+
+** `age` as the only covariate **
+
+```{r}
+lm.fit_perSubj <- lmList(distance ~ I(age-11) | Subject, Orthodont)
+
+summary(lm.fit_perSubj)
+```
+
+## Plot 95% confidence intervals
+
+intercept and slope for each subject
+
+```{r}
+coef.95.perSubj <- intervals(lm.fit_perSubj)
+plot(coef.95.perSubj)
+intervals(lm.fit_perSubj)
+
+# View(df_val)
+# 
+# Subj
+# 
+# df_val <- data.frame(rbind(coef.95.perSubj[,,1], coef.95.perSubj[,,2]))
+# 
+# Subj <- coef.95.perSubj %>% pull(Subject)
+# 
+# ID_coef <- rbind(matrix(rep("Intercept",27), nrow = 27), matrix(rep("Slope",27), nrow = 27))
+# 
+# df.coef <- data.frame(Subj, df_val,ID_coef)
+# 
+# colnames(df.coef) <- c("Subj", "lower", "mean", "upper", "coef")
+# 
+# names(df.coef)          
+# 
+# ggplot(df.coef) +
+#   geom_point(est.)
+
+```
+
+## Plot fits for each subject
+
+```{r}
+ggplot(Orthodont, aes(x = age, y = distance)) + 
+  geom_point() +
+  geom_smooth(method="lm") +
+  facet_wrap(~Subject) +
+  theme_bw()
+```
+
+
+
+
+
+## Using dummy variables for Subject effect
+
+```{r}
+lm.fit_SubjVariable <- lm(distance ~ I(age-11)*Subject, data = Orthodont)
+summary(lm.fit_SubjVariable)
+coef(lm.fit_SubjVariable)
+```
+
+
+## Comments
+
+- Residuals corresponding to the same subject tend to have the same sign.
+
+- There is a significant subject-to-subject variability for intercept.
+
+- Need to incorporate a “subject effect” in the model to account for between-subject variability.
+
+
+
+
+## What if we use `Subject` as an effect?
+
+- Inference about subject effect will not be applicable to the whole population
+
+- You would still need M-1 dummy variables
+
+
+
+## Fit a linear mixed effect model
+
+$$y_j^{(i)} = \quad \\
+\beta_0 + \beta_1 * age_j^{(i)} + \qquad \\
+                  b_0^{(i)} + b_1^{(i)} * age_j^{(i)} + \quad \epsilon_j^{(i)}$$
+
+where 
+
+$$\begin{bmatrix}
+b_0^{(i)}\\ b_1^{(i)}
+\end{bmatrix} = \cal N(\mathbf{0}, \mathbf{\Psi}),\quad  \mathbf{\Psi} = \begin{bmatrix}
+\sigma_0^2 & \rho\sigma_0\sigma_1\\ \rho\sigma_0\sigma_1 & \sigma_1^2
+\end{bmatrix}$$
+
+Subject_ID:   $i=1,..., M  \qquad (M=27)$   
+
+Year_ID:      $j=1,..., N  \qquad (N=4)$  
+
+residuals:    $\epsilon_j^{(i)} = \cal N(0,\sigma^2)$
+
+random effects: $b_0^{(i)}$ and $b_1^{(i)}$
+
+
+
+## Fit a single-level mixed effect model
+
+Both intercept and slope
+
+```{r}
+lm.fit_mixed_all <- lme(distance~I(age-11), data=Orthodont, random=~I(age-11)|Subject)
+
+summary(lm.fit_mixed_all)
+```
+
+## Confidence interval of the fit
+
+```{r}
+intervals(lm.fit_mixed_all)
+```
+
+## Mixed Effect with diagonal covariance
+
+```{r}
+lm.fit_mixed_diag <- lme( distance~I(age-11), data=Orthodont, 
+                         random=list( Subject = pdDiag( ~I(age-11) ) ) )
+lm.fit_mixed_diag
+```
+
+
+## Compare general and diagonal models
+
+```{r}
+anova( lm.fit_mixed_all, lm.fit_mixed_diag)
+```
+
+
+## Mixed Effect with only slope as random effect
+
+```{r}
+lm.fit_mixed_slope <- lme( distance~I(age-11), data=Orthodont, 
+                         random=~I(age-11)-1|Subject )
+lm.fit_mixed_slope
+```
+
+## Compare general and mixed-effects-only-slope models
+
+```{r}
+anova( lm.fit_mixed_diag, lm.fit_mixed_slope)
+```
+
+## Compare the coefficients between the mixed-effect and list models
+
+
+```{r}
+plot(coef(lm.fit_perSubj), col = "purple")
+par(new=TRUE)
+plot(coef(lm.fit_mixed_diag), col = "blue")
+
+# plot(c(coef(lm.fit_mixed_diag), coef(lm.fit_perSubj)))
+# 
+# coef(lm.fit_mixed_diag)
+# plot(coef(lm.fit_perSubj), col = "purple")
+# 
+# modelplot(list(lm.fit_mixed_diag, lm.fit_perSubj))
+# coe <- coef(lm.fit_perSubj)
+# 
+# coe <- coef(lm.fit_perSubj)-coef(lm.fit_mixed_diag)
+# 
+# coe
+# 
+# data.frame(coe)
+# 
+# plot(data.frame(coe))
+# 
+# lm.fit_mixed_diag
+# 
+# ggcoef(lm.fit_SubjVariable)
+# 
+# sjp.lmer(lm.fit_mixed_diag)
+```
+
+## Plot mixed effect fits for each subject
+
+```{r}
+newdata <- crossing(
+  Subject = Orthodont %>% pull(Subject) %>% levels() %>% factor(),
+  age = c(8,10,12,14)) 
+
+newdata2 <- newdata %>%
+  mutate(distance = predict(lm.fit_mixed_diag, newdata))
+
+# newdata <- crossing(
+#   Subject = Orthodont %>% pull(Subject) %>% levels() %>% factor(),
+#   age = c(-3,-1,1,3,13)) 
+# 
+# newdata3 <- newdata %>%
+#   mutate(distance = predict(lm.fit_mixed_diag, newdata))
+
+ggplot(Orthodont, aes(x = age, y = distance)) +
+  geom_point() +
+  facet_wrap(~Subject) +
+  geom_line(data = newdata2, color = 'blue') +
+  labs(y = "Distance (mm)", x = "Age (yr)") +
+  theme_bw()
+
+```
+
+## Consider the gender as an effect
+
+```{r}
+lm.fit_sex_mixed_all <- lme(distance~I(age-11)*Sex, data=Orthodont, random=~I(age-11)|Subject)
+
+summary(lm.fit_sex_mixed_all)
+intervals(lm.fit_sex_mixed_all)
+
+```
+
+## Residual Plot
+
+```{r}
+Data_mixedeffect <- Orthodont %>%
+  mutate(fit = fitted(lm.fit_sex_mixed_all),
+       resid = residuals(lm.fit_sex_mixed_all))
+
+ggplot(Data_mixedeffect) +
+  geom_point(aes(x = fit, y = resid, col = Sex)) +
+  scale_color_manual(values=c("black", "red")) +
+  xlab("Fitted Values") + ylab("Standardized Residuals") +
+  theme_bw()
+
+```
+
+## Residuals for each subject
+```{r}
+ggplot(Data_mixedeffect) +
+  geom_boxplot(aes(x = Subject, y = resid, col = Sex)) +
+  scale_color_manual(values=c("black", "red")) +
+  geom_hline(aes(yintercept = 0)) +
+  xlab("Subject") + ylab("Standardized Residuals") +
+  theme_bw()
+
+  
+```
+
+
+
+## Compare mixed effect model and fixed effect model
+
+```{r}
+anova(lm.fit_sex_mixed_all, lm.fit_all)
+```
+
+
+## Check the fixed-effect and random-effect coefficients
+
+```{r}
+random.effects(lm.fit_sex_mixed_all)
+fixed.effects(lm.fit_sex_mixed_all)
+```
+
